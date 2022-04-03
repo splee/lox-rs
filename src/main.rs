@@ -1,11 +1,14 @@
 mod lib;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
-use std::io::{BufRead, Write};
-use clap::Parser;
+//use std::io::{BufRead, Write};
+use clap::Parser as ClapParser;
+use lib::ast::{Expr, ExprVisitor, Op};
+use lib::lox::AstPrinter;
 use lib::scanning::{scan, TokenType};
+use lib::parser::parse;
 
-#[derive(Parser, Debug)]
+#[derive(ClapParser, Debug)]
 struct Args {
     file: Option<PathBuf>
 }
@@ -14,7 +17,7 @@ fn main() {
     let args = Args::parse();
     if let Err(why) = match args.file {
         Some(pbuf) => run_file(pbuf),
-        None => run_prompt(),
+        None => run_printer(),
     } {
         eprintln!("ERROR: {}", why);
     }
@@ -35,6 +38,7 @@ fn run_file(path: PathBuf) -> Result<()> {
     }
 }
 
+/*
 fn print_prompt() -> Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
@@ -62,17 +66,35 @@ fn run_prompt() -> Result<()> {
     }
     Ok(())
 }
+*/
 
 fn run(script: &str) -> Result<()> {
     println!("Script:");
     println!("{}", script);
     let tokens = scan(script)?;
-    for t in tokens {
-        // Don't print whitespace.
-        match &t.token_type {
-            TokenType::Whitespace | TokenType::Newline | TokenType::Eof => continue,
-            _ => println!("Token: {:?}", t)
-        }
-    }
+
+    let expression = match parse(&tokens) {
+        Ok(v) => v,
+        Err(why) => bail!(why),
+    };
+    
+    let mut printer = AstPrinter;
+    println!("{}", printer.visit_expr(&expression));
+    Ok(())
+}
+
+fn run_printer() -> Result<()> {
+    let left = Box::new(Expr::Unary(
+        Box::new(Op { token_type: TokenType::Minus }),
+        Box::new(Expr::NumericLiteral(123.0)),
+    ));
+    let op = Box::new(Op { token_type: TokenType::Star });
+    let right = Box::new(Expr::Grouping(Box::new(Expr::NumericLiteral(45.67))));
+    let expression = Box::new(Expr::Binary(left, op, right));
+
+    
+    let mut printer = AstPrinter;
+    println!("AST:");
+    println!("{}", printer.visit_expr(&expression));
     Ok(())
 }

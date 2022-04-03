@@ -1,8 +1,9 @@
 use anyhow::{bail, Result};
 use std::str::Chars;
+use std::iter::Peekable;
 use phf::phf_map;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single Character Tokens
     LeftParen,
@@ -56,8 +57,16 @@ pub enum TokenType {
 
     Whitespace,
     Newline,
+}
 
-    Eof,
+impl TokenType {
+    pub fn matches(&self, t: &TokenType) -> bool {
+        let pair = (self, t);
+        match pair {
+            (this, that) if this == that => true,
+            _ => false
+        }
+    }
 }
 
 static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
@@ -79,7 +88,7 @@ static KEYWORDS: phf::Map<&'static str, TokenType> = phf_map! {
     "while" => TokenType::While,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token {
     pub token_type: TokenType,
     pub lexeme: String,
@@ -88,7 +97,7 @@ pub struct Token {
 }
 
 pub struct Scanner<'a> {
-    chars: std::iter::Peekable<Chars<'a>>,
+    chars: Peekable<Chars<'a>>,
     current: usize,
     line: usize,
     line_pos: usize,
@@ -97,20 +106,13 @@ pub struct Scanner<'a> {
 
 impl<'a> Scanner<'a> {
     fn new(source: &'a str) -> Self {
-        let chars: std::iter::Peekable<Chars<'a>> = source.chars().peekable();
+        let chars: Peekable<Chars<'a>> = source.chars().peekable();
         Scanner {
             chars: chars,
             current: 0,
             line_pos: 0,
             line: 1,
             tokens: Vec::new(),
-        }
-    }
-
-    fn is_finished(&mut self) -> bool {
-        match self.chars.peek() {
-            Some(_) => false,
-            None => true,
         }
     }
 
@@ -298,7 +300,13 @@ pub fn scan(source: &str) -> Result<Vec<Token>> {
             }
         }
     }
-    Ok(scanner.tokens)
+    // Do the final whitespace filtering
+    let filtered_tokens: Vec<Token> = scanner.tokens.into_iter().filter(|t| match t.token_type {
+        TokenType::Whitespace | TokenType::Newline => false,
+        _ => true,
+    }).collect();
+
+    Ok(filtered_tokens)
 }
 
 fn is_numeric(c: char) -> bool {
