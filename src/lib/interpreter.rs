@@ -17,7 +17,12 @@ impl ExprVisitor<Result<Expr, RuntimeError>> for Interpreter {
             Expr::Grouping(left) => self.visit_grouping_expr(left),
             Expr::StringLiteral(v) => Ok(Expr::StringLiteral(v.clone())),
             Expr::NumericLiteral(v) => Ok(Expr::NumericLiteral(v.clone())),
-            Expr::BooleanLiteral(v) => Ok(Expr::BooleanLiteral(v.clone())),
+            Expr::BooleanLiteral(v) => {
+                match v {
+                    true => Ok(Expr::BooleanLiteral(true)),
+                    false => Ok(Expr::BooleanLiteral(false)),
+                }
+            },
             Expr::NilLiteral => Ok(Expr::NilLiteral),
             Expr::Unary(op, right) => self.visit_unary_expr(op, right),
         }
