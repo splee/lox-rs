@@ -5,12 +5,12 @@ use std::path::PathBuf;
 use clap::Parser as ClapParser;
 use lib::ast::{Expr, ExprVisitor, Op};
 use lib::lox::AstPrinter;
-use lib::scanning::{scan, TokenType};
 use lib::parser::parse;
+use lib::scanning::{scan, TokenType};
 
 #[derive(ClapParser, Debug)]
 struct Args {
-    file: Option<PathBuf>
+    file: Option<PathBuf>,
 }
 
 fn main() {
@@ -77,7 +77,7 @@ fn run(script: &str) -> Result<()> {
         Ok(v) => v,
         Err(why) => bail!(why),
     };
-    
+
     let mut printer = AstPrinter;
     println!("{}", printer.visit_expr(&expression));
     Ok(())
@@ -85,14 +85,17 @@ fn run(script: &str) -> Result<()> {
 
 fn run_printer() -> Result<()> {
     let left = Box::new(Expr::Unary(
-        Box::new(Op { token_type: TokenType::Minus }),
+        Box::new(Op {
+            token_type: TokenType::Minus,
+        }),
         Box::new(Expr::NumericLiteral(123.0)),
     ));
-    let op = Box::new(Op { token_type: TokenType::Star });
+    let op = Box::new(Op {
+        token_type: TokenType::Star,
+    });
     let right = Box::new(Expr::Grouping(Box::new(Expr::NumericLiteral(45.67))));
     let expression = Box::new(Expr::Binary(left, op, right));
 
-    
     let mut printer = AstPrinter;
     println!("AST:");
     println!("{}", printer.visit_expr(&expression));

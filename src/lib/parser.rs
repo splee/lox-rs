@@ -1,5 +1,5 @@
-use crate::lib::scanning::{Token, TokenType};
 use crate::lib::ast::{Expr, Op};
+use crate::lib::scanning::{Token, TokenType};
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -12,9 +12,7 @@ pub enum ParseError {
     },
 
     #[error("An internal parser error occurred: {msg:?}")]
-    InternalError {
-        msg: String,
-    },
+    InternalError { msg: String },
 }
 
 struct ParserState<'a> {
@@ -34,7 +32,9 @@ impl<'a> ParserState<'a> {
 
     fn current(&self) -> Result<&Token, ParseError> {
         if self.is_consumed() {
-            return Err(ParseError::InternalError { msg: "current should always be valid but is out of bounds".to_owned() })
+            return Err(ParseError::InternalError {
+                msg: "current should always be valid but is out of bounds".to_owned(),
+            });
         }
         Ok(&self.tokens[self.current_idx])
     }
@@ -43,7 +43,9 @@ impl<'a> ParserState<'a> {
         if self.current_idx > 0 {
             Ok(&self.tokens[self.current_idx - 1])
         } else {
-            Err(ParseError::InternalError { msg: "previous should never be called without first calling advance".to_owned() })
+            Err(ParseError::InternalError {
+                msg: "previous should never be called without first calling advance".to_owned(),
+            })
         }
     }
 
@@ -59,13 +61,21 @@ impl<'a> ParserState<'a> {
         if let Some(t) = self.peek() {
             if expected.matches(&t.token_type) {
                 self.advance();
-                return Ok(())
+                return Ok(());
             } else {
-                return Err(ParseError::Panic {line: t.line, lexeme: t.lexeme.to_string(), msg: message.to_owned()});
+                return Err(ParseError::Panic {
+                    line: t.line,
+                    lexeme: t.lexeme.to_string(),
+                    msg: message.to_owned(),
+                });
             }
         } else {
-            let t = self.current()?; 
-            return Err(ParseError::Panic { line: t.line, lexeme: t.lexeme.to_string(), msg: message.to_owned()})
+            let t = self.current()?;
+            return Err(ParseError::Panic {
+                line: t.line,
+                lexeme: t.lexeme.to_string(),
+                msg: message.to_owned(),
+            });
         }
     }
 
@@ -83,7 +93,13 @@ impl<'a> ParserState<'a> {
         self.match_advance(t1) || self.match_advance(t2)
     }
 
-    fn match_advance4(&mut self, t1: TokenType, t2: TokenType, t3: TokenType, t4: TokenType) -> bool {
+    fn match_advance4(
+        &mut self,
+        t1: TokenType,
+        t2: TokenType,
+        t3: TokenType,
+        t4: TokenType,
+    ) -> bool {
         self.match_advance2(t1, t2) || self.match_advance2(t3, t4)
     }
 
@@ -108,14 +124,15 @@ impl<'a> ParserState<'a> {
         self.current_idx + delta >= self.tokens.len()
     }
 
-    fn consume_expr(&mut self) -> Result<Box<Expr>, ParseError> {
-        match self.expr.as_ref() {
-            Some(v) => Ok(v.clone()), // TODO: figure out how to prevent this clone from being required.
-            None => Err(ParseError::InternalError { msg: format!("{}", "expected expr to be populated") }),
+    fn take_expr(&mut self) -> Result<Box<Expr>, ParseError> {
+        match self.expr.take() {
+            Some(v) => Ok(v),
+            None => Err(ParseError::InternalError {
+                msg: format!("{}", "expected expr to be populated"),
+            }),
         }
     }
 }
-
 
 pub fn parse(tokens: &[Token]) -> Result<Box<Expr>, ParseError> {
     // TODO: Add error handling/parser synchronization
@@ -123,7 +140,9 @@ pub fn parse(tokens: &[Token]) -> Result<Box<Expr>, ParseError> {
     state = expression(state)?;
     match state.expr {
         Some(e) => Ok(e),
-        None => Err(ParseError::InternalError { msg: format!("{}", "Failed to produce expression")}),
+        None => Err(ParseError::InternalError {
+            msg: format!("{}", "Failed to produce expression"),
+        }),
     }
 }
 
@@ -133,11 +152,11 @@ fn expression(state: ParserState) -> Result<ParserState, ParseError> {
 
 fn equality(mut state: ParserState) -> Result<ParserState, ParseError> {
     state = comparison(state)?;
-    let mut expr = state.consume_expr()?;
+    let mut expr = state.take_expr()?;
     while state.match_advance2(TokenType::BangEqual, TokenType::EqualEqual) {
         let operator: Box<Op> = Box::new(state.previous()?.into());
         state = comparison(state)?;
-        let right = state.consume_expr()?;
+        let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
     }
     state.expr = Some(expr);
@@ -146,12 +165,17 @@ fn equality(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn comparison(mut state: ParserState) -> Result<ParserState, ParseError> {
     state = term(state)?;
-    let mut expr = state.consume_expr()?;
-    
-    while state.match_advance4(TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual) {
+    let mut expr = state.take_expr()?;
+
+    while state.match_advance4(
+        TokenType::Greater,
+        TokenType::GreaterEqual,
+        TokenType::Less,
+        TokenType::LessEqual,
+    ) {
         let operator: Box<Op> = Box::new(state.previous()?.into());
         state = term(state)?;
-        let right = state.consume_expr()?;
+        let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
     }
     state.expr = Some(expr);
@@ -160,12 +184,12 @@ fn comparison(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn term(mut state: ParserState) -> Result<ParserState, ParseError> {
     state = factor(state)?;
-    let mut expr = state.consume_expr()?;
+    let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Minus, TokenType::Plus) {
         let operator: Box<Op> = Box::new(state.previous()?.into());
         state = factor(state)?;
-        let right = state.consume_expr()?;
+        let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
     }
     state.expr = Some(expr);
@@ -174,12 +198,12 @@ fn term(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn factor(mut state: ParserState) -> Result<ParserState, ParseError> {
     state = unary(state)?;
-    let mut expr = state.consume_expr()?;
+    let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Slash, TokenType::Star) {
         let operator: Box<Op> = Box::new(state.previous()?.into());
         state = unary(state)?;
-        let right = state.consume_expr()?;
+        let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
     }
     state.expr = Some(expr);
@@ -190,7 +214,7 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
     if state.match_advance2(TokenType::Bang, TokenType::Minus) {
         let operator: Box<Op> = Box::new(state.previous()?.into());
         state = unary(state)?;
-        let right = state.consume_expr()?;
+        let right = state.take_expr()?;
         let expr = Box::new(Expr::Unary(operator, right));
         state.expr = Some(expr);
         Ok(state)
@@ -200,46 +224,44 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
 }
 
 fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
-    let mut expr = state.consume_expr()?;  // This is just to initialize the variable
-    let mut expr_matched = false;
     if state.match_advance(TokenType::False) {
-        expr = Box::new(Expr::BooleanLiteral(false));
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::BooleanLiteral(false)));
     }
     if state.match_advance(TokenType::True) {
-        expr = Box::new(Expr::BooleanLiteral(true));
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::BooleanLiteral(true)));
     }
     if state.match_advance(TokenType::Nil) {
-        expr = Box::new(Expr::NilLiteral);
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::NilLiteral));
     }
     if state.match_advance(TokenType::Str) {
         let t = state.previous()?;
-        expr = Box::new(Expr::StringLiteral(t.lexeme.to_string()));
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::StringLiteral(t.lexeme.to_string())));
     }
     if state.match_advance(TokenType::Numeric) {
         let t = state.previous()?;
         let num = match t.lexeme.parse::<f64>() {
             Ok(v) => v,
-            Err(why) => return Err(ParseError::Panic { line: t.line, lexeme: t.lexeme.to_string(), msg: format!("{}: {:#?}", "Failed to parse numeric", why) }),
+            Err(why) => {
+                return Err(ParseError::Panic {
+                    line: t.line,
+                    lexeme: t.lexeme.to_string(),
+                    msg: format!("{}: {:#?}", "Failed to parse numeric", why),
+                })
+            }
         };
-        expr = Box::new(Expr::NumericLiteral(num));
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::NumericLiteral(num)));
     }
     if state.match_advance(TokenType::LeftParen) {
         state = expression(state)?;
-        expr = state.consume_expr()?;
         // Ensure the parentheses are closed
         state.consume(&TokenType::RightParen, "Expect ')' after expression")?;
-        expr = Box::new(Expr::Grouping(expr));
-        expr_matched = true;
+        state.expr = Some(Box::new(Expr::Grouping(state.take_expr()?)));
     }
-    if expr_matched {
-        state.expr = Some(expr);
-        Ok(state)
+    if let None = state.expr {
+        Err(ParseError::InternalError {
+            msg: format!("Unsupported token: {:?}", state.current()?),
+        })
     } else {
-        Err(ParseError::InternalError { msg: "Unsupported token".to_owned() })
+        Ok(state)
     }
 }

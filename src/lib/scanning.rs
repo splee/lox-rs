@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
-use std::str::Chars;
-use std::iter::Peekable;
 use phf::phf_map;
+use std::iter::Peekable;
+use std::str::Chars;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -64,7 +64,7 @@ impl TokenType {
         let pair = (self, t);
         match pair {
             (this, that) if this == that => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -122,7 +122,7 @@ impl<'a> Scanner<'a> {
                 self.current += 1;
                 self.line_pos += 1;
                 Ok(v)
-            },
+            }
             None => bail!("Source consumed."),
         }
     }
@@ -135,7 +135,7 @@ impl<'a> Scanner<'a> {
                 } else {
                     false
                 }
-            },
+            }
             None => false,
         }
     }
@@ -157,12 +157,42 @@ impl<'a> Scanner<'a> {
             '+' => TokenType::Plus,
             ';' => TokenType::Semicolon,
             '*' => TokenType::Star,
-            // 
-            '!' => if self.peek_match('=') { TokenType::BangEqual } else { TokenType::Bang },
-            '=' => if self.peek_match('=') { TokenType::EqualEqual } else { TokenType::Equal },
-            '<' => if self.peek_match('=') { TokenType::LessEqual } else { TokenType::Less },
-            '>' => if self.peek_match('=') { TokenType::GreaterEqual } else { TokenType::Greater },
-            '/' => if self.peek_match('/') { TokenType::Comment } else { TokenType::Slash },
+            //
+            '!' => {
+                if self.peek_match('=') {
+                    TokenType::BangEqual
+                } else {
+                    TokenType::Bang
+                }
+            }
+            '=' => {
+                if self.peek_match('=') {
+                    TokenType::EqualEqual
+                } else {
+                    TokenType::Equal
+                }
+            }
+            '<' => {
+                if self.peek_match('=') {
+                    TokenType::LessEqual
+                } else {
+                    TokenType::Less
+                }
+            }
+            '>' => {
+                if self.peek_match('=') {
+                    TokenType::GreaterEqual
+                } else {
+                    TokenType::Greater
+                }
+            }
+            '/' => {
+                if self.peek_match('/') {
+                    TokenType::Comment
+                } else {
+                    TokenType::Slash
+                }
+            }
             ' ' => TokenType::Whitespace,
             '\r' => TokenType::Whitespace,
             '\t' => TokenType::Whitespace,
@@ -170,7 +200,7 @@ impl<'a> Scanner<'a> {
                 self.line += 1;
                 self.line_pos = 0;
                 TokenType::Newline
-            },
+            }
             '"' => TokenType::Str,
             default => {
                 if is_numeric(default) {
@@ -184,12 +214,16 @@ impl<'a> Scanner<'a> {
         };
         let lexeme: String = {
             match &token_type {
-               TokenType::Str => self.consume_string()?,
-               TokenType::Comment => self.consume_comment()?,
-               TokenType::IdentifierOrKeyword => self.consume_identifier_or_keyword(c)?,
-               TokenType::Numeric => String::from(self.consume_numeric(c)?),
-               TokenType::BangEqual | TokenType::EqualEqual | TokenType::LessEqual | TokenType::GreaterEqual => String::from_iter(vec![c, self.advance()?]),
-               _ => String::from(c),           }
+                TokenType::Str => self.consume_string()?,
+                TokenType::Comment => self.consume_comment()?,
+                TokenType::IdentifierOrKeyword => self.consume_identifier_or_keyword(c)?,
+                TokenType::Numeric => String::from(self.consume_numeric(c)?),
+                TokenType::BangEqual
+                | TokenType::EqualEqual
+                | TokenType::LessEqual
+                | TokenType::GreaterEqual => String::from_iter(vec![c, self.advance()?]),
+                _ => String::from(c),
+            }
         };
         // Now we have the lexeme, we can resolve IdentifierOrKeyword if needed.
         let should_resolve = match &token_type {
@@ -222,8 +256,10 @@ impl<'a> Scanner<'a> {
                         break;
                     }
                     content.push(self.advance()?);
-                },
-                None => { break; }
+                }
+                None => {
+                    break;
+                }
             }
         }
         Ok(String::from_iter(content))
@@ -246,7 +282,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn consume_numeric(&mut self, first_char: char) -> Result<String> {
-        let mut content: Vec<char> = vec!(first_char);
+        let mut content: Vec<char> = vec![first_char];
         loop {
             match self.chars.peek() {
                 Some(vref) => {
@@ -256,8 +292,10 @@ impl<'a> Scanner<'a> {
                     } else {
                         break;
                     }
-                },
-                None => { break; }
+                }
+                None => {
+                    break;
+                }
             }
         }
         let str_val = String::from_iter(content);
@@ -270,7 +308,7 @@ impl<'a> Scanner<'a> {
     }
 
     fn consume_identifier_or_keyword(&mut self, first_char: char) -> Result<String> {
-        let mut content: Vec<char> = vec!(first_char);
+        let mut content: Vec<char> = vec![first_char];
         loop {
             match self.chars.peek() {
                 Some(vref) => {
@@ -280,14 +318,15 @@ impl<'a> Scanner<'a> {
                     } else {
                         break;
                     }
-                },
-                None => { break; },
+                }
+                None => {
+                    break;
+                }
             }
         }
         Ok(String::from_iter(content))
     }
 }
-
 
 pub fn scan(source: &str) -> Result<Vec<Token>> {
     let mut scanner = Scanner::new(source);
@@ -301,10 +340,14 @@ pub fn scan(source: &str) -> Result<Vec<Token>> {
         }
     }
     // Do the final whitespace filtering
-    let filtered_tokens: Vec<Token> = scanner.tokens.into_iter().filter(|t| match t.token_type {
-        TokenType::Whitespace | TokenType::Newline => false,
-        _ => true,
-    }).collect();
+    let filtered_tokens: Vec<Token> = scanner
+        .tokens
+        .into_iter()
+        .filter(|t| match t.token_type {
+            TokenType::Whitespace | TokenType::Newline => false,
+            _ => true,
+        })
+        .collect();
 
     Ok(filtered_tokens)
 }
