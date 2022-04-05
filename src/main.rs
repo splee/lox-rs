@@ -3,10 +3,10 @@ use anyhow::{bail, Result};
 use std::path::PathBuf;
 //use std::io::{BufRead, Write};
 use clap::Parser as ClapParser;
-use lib::ast::{Expr, ExprVisitor, Op};
+use lib::ast::{Expr, LiteralValue};
 use lib::lox::AstPrinter;
 use lib::parser::parse;
-use lib::scanning::{scan, TokenType};
+use lib::scanning::{scan, Token, TokenType};
 
 #[derive(ClapParser, Debug)]
 struct Args {
@@ -79,25 +79,35 @@ fn run(script: &str) -> Result<()> {
     };
 
     let mut printer = AstPrinter;
-    println!("{}", printer.visit_expr(&expression));
+    let expr_string = match printer.print(&expression) {
+        Ok(v) => v,
+        Err(why) => bail!(why)
+    };
+    println!("{}", expr_string);
     Ok(())
 }
 
 fn run_printer() -> Result<()> {
     let left = Box::new(Expr::Unary(
-        Box::new(Op {
+        Token {
             token_type: TokenType::Minus,
-        }),
-        Box::new(Expr::NumericLiteral(123.0)),
+            lexeme: String::from("-"),
+            line: 1,
+            line_pos: 1,
+        },
+        Box::new(Expr::Literal(LiteralValue::Number(123.0))),
     ));
-    let op = Box::new(Op {
+    let op = Token {
         token_type: TokenType::Star,
-    });
-    let right = Box::new(Expr::Grouping(Box::new(Expr::NumericLiteral(45.67))));
+        lexeme: String::from("*"),
+        line: 1,
+        line_pos: 1,
+    };
+    let right = Box::new(Expr::Grouping(Box::new(Expr::Literal(LiteralValue::Number(45.67)))));
     let expression = Box::new(Expr::Binary(left, op, right));
 
     let mut printer = AstPrinter;
     println!("AST:");
-    println!("{}", printer.visit_expr(&expression));
+    println!("{}", printer.print(&expression).expect("Failed to print AST"));
     Ok(())
 }

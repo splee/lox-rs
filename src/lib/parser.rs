@@ -1,4 +1,4 @@
-use crate::lib::ast::{Expr, Op};
+use crate::lib::ast::{Expr, LiteralValue};
 use crate::lib::scanning::{Token, TokenType};
 use thiserror::Error;
 
@@ -154,7 +154,7 @@ fn equality(mut state: ParserState) -> Result<ParserState, ParseError> {
     state = comparison(state)?;
     let mut expr = state.take_expr()?;
     while state.match_advance2(TokenType::BangEqual, TokenType::EqualEqual) {
-        let operator: Box<Op> = Box::new(state.previous()?.into());
+        let operator = state.previous()?.clone();
         state = comparison(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -173,7 +173,7 @@ fn comparison(mut state: ParserState) -> Result<ParserState, ParseError> {
         TokenType::Less,
         TokenType::LessEqual,
     ) {
-        let operator: Box<Op> = Box::new(state.previous()?.into());
+        let operator = state.previous()?.clone();
         state = term(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -187,7 +187,7 @@ fn term(mut state: ParserState) -> Result<ParserState, ParseError> {
     let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Minus, TokenType::Plus) {
-        let operator: Box<Op> = Box::new(state.previous()?.into());
+        let operator = state.previous()?.clone();
         state = factor(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -201,7 +201,7 @@ fn factor(mut state: ParserState) -> Result<ParserState, ParseError> {
     let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Slash, TokenType::Star) {
-        let operator: Box<Op> = Box::new(state.previous()?.into());
+        let operator = state.previous()?.clone();
         state = unary(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -212,7 +212,7 @@ fn factor(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
     if state.match_advance2(TokenType::Bang, TokenType::Minus) {
-        let operator: Box<Op> = Box::new(state.previous()?.into());
+        let operator = state.previous()?.clone();
         state = unary(state)?;
         let right = state.take_expr()?;
         let expr = Box::new(Expr::Unary(operator, right));
@@ -225,17 +225,17 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
     if state.match_advance(TokenType::False) {
-        state.expr = Some(Box::new(Expr::BooleanLiteral(false)));
+        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Boolean(false))));
     }
     if state.match_advance(TokenType::True) {
-        state.expr = Some(Box::new(Expr::BooleanLiteral(true)));
+        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Boolean(true))));
     }
     if state.match_advance(TokenType::Nil) {
-        state.expr = Some(Box::new(Expr::NilLiteral));
+        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Nil)));
     }
     if state.match_advance(TokenType::Str) {
         let t = state.previous()?;
-        state.expr = Some(Box::new(Expr::StringLiteral(t.lexeme.to_string())));
+        state.expr = Some(Box::new(Expr::Literal(LiteralValue::String(t.lexeme.clone()))));
     }
     if state.match_advance(TokenType::Numeric) {
         let t = state.previous()?;
@@ -249,7 +249,7 @@ fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
                 })
             }
         };
-        state.expr = Some(Box::new(Expr::NumericLiteral(num)));
+        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Number(num))));
     }
     if state.match_advance(TokenType::LeftParen) {
         state = expression(state)?;

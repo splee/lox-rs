@@ -1,131 +1,110 @@
-use crate::lib::ast::{Expr, ExprVisitor, Op};
-use crate::lib::scanning::TokenType;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum RuntimeError {
-    #[error("Unsupported operation: {message} [{token_type}]")]
-    UnsupportedOperation { message: String, token_type: String },
-}
+use crate::lib::{
+    ast::{Expr, ExprVisitor, LiteralValue},
+    err::LoxError,
+    scanning::{Token, TokenType},
+    object::Object,
+};
 
 pub struct Interpreter {}
 
-impl ExprVisitor<Result<Expr, RuntimeError>> for Interpreter {
-    fn visit_expr(&mut self, expr: &Expr) -> Result<Expr, RuntimeError> {
-        match expr {
-            Expr::Binary(left, op, right) => self.visit_binary_expr(left, op, right),
-            Expr::Grouping(left) => self.visit_grouping_expr(left),
-            Expr::StringLiteral(v) => Ok(Expr::StringLiteral(v.clone())),
-            Expr::NumericLiteral(v) => Ok(Expr::NumericLiteral(v.clone())),
-            Expr::BooleanLiteral(v) => {
-                match v {
-                    true => Ok(Expr::BooleanLiteral(true)),
-                    false => Ok(Expr::BooleanLiteral(false)),
-                }
-            },
-            Expr::NilLiteral => Ok(Expr::NilLiteral),
-            Expr::Unary(op, right) => self.visit_unary_expr(op, right),
-        }
+impl Interpreter {
+    fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
+        expression.accept(self)
     }
 }
 
-impl Interpreter {
+impl ExprVisitor<Object> for Interpreter {
+
+    fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<Object, LoxError> {
+        match value {
+            LiteralValue::Boolean(v) => Ok(Object::Boolean(v.clone())),
+            LiteralValue::Nil => Ok(Object::Nil),
+            LiteralValue::Number(v) => Ok(Object::Number(v.clone())),
+            LiteralValue::String(v) => Ok(Object::String(v.clone())),
+        }
+    }
+
     fn visit_binary_expr(
         &mut self,
         left: &Expr,
-        op: &Op,
+        op: &Token,
         right: &Expr,
-    ) -> Result<Expr, RuntimeError> {
-        let left_eval = self.visit_expr(left)?;
-        let right_eval = self.visit_expr(right)?;
+    ) -> Result<Object, LoxError> {
+        let left_eval = self.evaluate(left)?;
+        let right_eval = self.evaluate(right)?;
 
-        let return_expr = match (&left_eval, &right_eval) {
-            (Expr::NumericLiteral(l), Expr::NumericLiteral(r)) => {
+        let object = match (&left_eval, &right_eval) {
+            (Object::Number(l), Object::Number(r)) => {
                 match &op.token_type {
-                    TokenType::Plus => Expr::NumericLiteral(l + r),
-                    TokenType::Minus => Expr::NumericLiteral(l - r),
-                    TokenType::Slash => Expr::NumericLiteral(l / r),
-                    TokenType::Star => Expr::NumericLiteral(l * r),
-                    TokenType::Greater => Expr::BooleanLiteral(l > r),
-                    TokenType::GreaterEqual => Expr::BooleanLiteral(l >= r),
-                    TokenType::Less => Expr::BooleanLiteral(l < r),
-                    TokenType::LessEqual => Expr::BooleanLiteral(l <= r),
-                    TokenType::EqualEqual => Expr::BooleanLiteral(l == r),
-                    TokenType::BangEqual => Expr::BooleanLiteral(l != r),
-                    _ => return Err(RuntimeError::UnsupportedOperation{ message: "invalid for numeric types".to_owned(), token_type: format!("{:?}", &op.token_type) }),
+                    TokenType::Plus => Object::Number(l + r),
+                    TokenType::Minus => Object::Number(l - r),
+                    TokenType::Slash => Object::Number(l / r),
+                    TokenType::Star => Object::Number(l * r),
+                    TokenType::Greater => Object::Boolean(l > r),
+                    TokenType::GreaterEqual => Object::Boolean(l >= r),
+                    TokenType::Less => Object::Boolean(l < r),
+                    TokenType::LessEqual => Object::Boolean(l <= r),
+                    TokenType::EqualEqual => Object::Boolean(l == r),
+                    TokenType::BangEqual => Object::Boolean(l != r),
+                    _ => return unsupported_operation_error("numeric", op),
                 }
             },
-            (Expr::StringLiteral(l), Expr::StringLiteral(r)) => {
+            (Object::String(l), Object::String(r)) => {
                 match &op.token_type {
-                    TokenType::Plus => Expr::StringLiteral(format!("{}{}", l, r)),
-                    TokenType::EqualEqual => Expr::BooleanLiteral(l.eq(r)),
-                    TokenType::BangEqual => Expr::BooleanLiteral(!l.eq(r)),
-                    _ => return Err(RuntimeError::UnsupportedOperation { message: "invalid for string types".to_owned(), token_type: format!("{:?}", &op.token_type) }),
+                    TokenType::Plus => Object::String(format!("{}{}", l, r)),
+                    TokenType::EqualEqual => Object::Boolean(l.eq(r)),
+                    TokenType::BangEqual => Object::Boolean(!l.eq(r)),
+                    _ => return unsupported_operation_error("string", op),
                 }
             },
-            (Expr::NilLiteral, Expr::NilLiteral) => {
+            (Object::Nil, Object::Nil) => {
                 match &op.token_type {
-                    TokenType::EqualEqual => Expr::BooleanLiteral(true),
-                    TokenType::BangEqual => Expr::BooleanLiteral(false),
+                    TokenType::EqualEqual => Object::Boolean(true),
+                    TokenType::BangEqual => Object::Boolean(false),
                     // (nil + nil) == (nil - nil) == (nil / nil) == (nil * nil) = true
-                    TokenType::Plus | TokenType::Minus | TokenType::Slash | TokenType::Star => Expr::NilLiteral,
-                    _ => return Err(RuntimeError::UnsupportedOperation { message: "invalid for nil types".to_owned(), token_type: format!("{:?}", &op.token_type)}),
+                    TokenType::Plus | TokenType::Minus | TokenType::Slash | TokenType::Star => Object::Nil,
+                    _ => return unsupported_operation_error("nil", op),
                 }
             }
-            (_, _) => return Err(RuntimeError::UnsupportedOperation { message: format!("Expression has no supported operations! Left operand: {:?}, Right operand: {:?}", left_eval, right_eval), token_type: format!("{:?}", &op.token_type) }),
+            // Not sure if gross or elegant...
+            (_, _) => return unsupported_operation_error("supplied combination of", op),
         };
-        Ok(return_expr)
+        Ok(object)
     }
 
-    fn visit_grouping_expr(&mut self, left: &Expr) -> Result<Expr, RuntimeError> {
-        self.visit_expr(left)
+    fn visit_grouping_expr(&mut self, left: &Expr) -> Result<Object, LoxError> {
+        self.evaluate(left)
     }
 
-    fn visit_unary_expr(&mut self, op: &Op, right: &Expr) -> Result<Expr, RuntimeError> {
-        let right_eval = self.visit_expr(right)?;
+    fn visit_unary_expr(&mut self, op: &Token, right: &Expr) -> Result<Object, LoxError> {
+        let right_eval = self.evaluate(right)?;
         let return_expr = match right_eval {
-            Expr::NumericLiteral(r) => {
+            Object::Number(r) => {
                 match &op.token_type {
-                    TokenType::Minus => Expr::NumericLiteral(-r),
-                    TokenType::Plus => Expr::NumericLiteral(r),
+                    TokenType::Minus => Object::Number(-r),
+                    TokenType::Plus => Object::Number(r),
                     // A numeric is considered "truthy" if it is not equal to zero
-                    TokenType::Bang => Expr::BooleanLiteral(r != 0.0),
-                    _ => {
-                        return Err(RuntimeError::UnsupportedOperation {
-                            message: "invalid for numeric types".to_owned(),
-                            token_type: format!("{:?}", &op.token_type),
-                        })
-                    }
+                    TokenType::Bang => Object::Boolean(r != 0.0),
+                    _ => return unsupported_operation_error("numeric", op),
                 }
             }
-            Expr::BooleanLiteral(r) => match &op.token_type {
-                TokenType::Bang => Expr::BooleanLiteral(!r),
-                _ => {
-                    return Err(RuntimeError::UnsupportedOperation {
-                        message: "invalid for boolean types".to_owned(),
-                        token_type: format!("{:?}", &op.token_type),
-                    })
-                }
+            Object::Boolean(r) => match &op.token_type {
+                TokenType::Bang => Object::Boolean(!r),
+                _ => return unsupported_operation_error("boolean", op),
             },
-            Expr::NilLiteral => match &op.token_type {
-                TokenType::Bang => Expr::BooleanLiteral(true),
-                _ => {
-                    return Err(RuntimeError::UnsupportedOperation {
-                        message: "invalid for nil types".to_owned(),
-                        token_type: format!("{:?}", &op.token_type),
-                    })
-                }
+            Object::Nil => match &op.token_type {
+                TokenType::Bang => Object::Boolean(true),
+                _ => return unsupported_operation_error("nil", op),
             },
-            _ => {
-                return Err(RuntimeError::UnsupportedOperation {
-                    message: format!(
-                        "Expression has no supported operations! Right operand: {:?}",
-                        right_eval
-                    ),
-                    token_type: format!("{:?}", &op.token_type),
-                })
-            }
+            Object::String(r) => return unsupported_operation_error("string", op),
         };
         Ok(return_expr)
     }
+}
+
+fn unsupported_operation_error<T>(type_name: &str, op: &Token) -> Result<T, LoxError> {
+    Err(LoxError::Runtime {
+        message: format!("Unsupported operation for {} types.", type_name),
+        at: op.clone(),
+    })
 }
