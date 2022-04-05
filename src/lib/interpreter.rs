@@ -96,7 +96,7 @@ impl ExprVisitor<Object> for Interpreter {
                 TokenType::Bang => Object::Boolean(true),
                 _ => return unsupported_operation_error("nil", op),
             },
-            Object::String(r) => return unsupported_operation_error("string", op),
+            Object::String(_) => return unsupported_operation_error("string", op),
         };
         Ok(return_expr)
     }
