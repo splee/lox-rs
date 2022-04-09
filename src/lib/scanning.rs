@@ -333,8 +333,7 @@ pub fn scan(source: &str) -> Result<Vec<Token>> {
     loop {
         match scanner.scan_next() {
             Ok(()) => continue,
-            Err(why) => {
-                println!("Scanner finished: {:#?}", why);
+            Err(_) => {
                 break;
             }
         }

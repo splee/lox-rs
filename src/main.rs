@@ -11,19 +11,21 @@ use lib::interpreter::Interpreter;
 #[derive(ClapParser, Debug)]
 struct Args {
     file: Option<PathBuf>,
+    #[clap(long)]
+    print_ast: bool,
 }
 
 fn main() {
     let args = Args::parse();
     if let Err(why) = match args.file {
-        Some(pbuf) => run_file(pbuf),
-        None => run_prompt(),
+        Some(pbuf) => run_file(pbuf, args.print_ast),
+        None => run_prompt(args.print_ast),
     } {
         eprintln!("ERROR: {}", why);
     }
 }
 
-fn run_file(path: PathBuf) -> Result<()> {
+fn run_file(path: PathBuf, print_ast: bool) -> Result<()> {
     println!("Running lox source at {}", path.display());
     if !path.exists() || !path.is_file() {
         bail!("Path does not exist or is not a valid file.");
@@ -33,7 +35,7 @@ fn run_file(path: PathBuf) -> Result<()> {
         Err(_) => bail!("Failed to read file."),
     };
     match std::str::from_utf8(&content) {
-        Ok(c) => run(c),
+        Ok(c) => run(c, print_ast),
         Err(_) => bail!("Failed to decode unicode."),
     }
 }
@@ -51,14 +53,14 @@ fn print_prompt() -> Result<()> {
     Ok(())
 }
 
-fn run_prompt() -> Result<()> {
+fn run_prompt(print_ast: bool) -> Result<()> {
     println!("Running lox interpreter...");
     let stdin = std::io::stdin();
     print_prompt()?;
     for line in stdin.lock().lines() {
         println!("");
         match line {
-            Ok(l) => run(&l)?,
+            Ok(l) => run(&l, print_ast)?,
             Err(_) => bail!("Failed to read line"),
         }
         print_prompt()?;
@@ -66,9 +68,7 @@ fn run_prompt() -> Result<()> {
     Ok(())
 }
 
-fn run(script: &str) -> Result<()> {
-    println!("Script:");
-    println!("{}", script);
+fn run(script: &str, print_ast: bool) -> Result<()> {
     let tokens = scan(script)?;
 
     let expression = match parse(&tokens) {
@@ -76,12 +76,14 @@ fn run(script: &str) -> Result<()> {
         Err(why) => bail!(why),
     };
 
-    let mut printer = AstPrinter {};
-    let expr_string = match printer.print(&expression) {
-        Ok(v) => v,
-        Err(why) => bail!(why)
-    };
-    println!("{}", expr_string);
+    if print_ast {
+        let mut printer = AstPrinter {};
+        let expr_string = match printer.print(&expression) {
+            Ok(v) => v,
+            Err(why) => bail!(why)
+        };
+        println!("{}", expr_string);
+    }
 
     let mut interpreter = Interpreter {};
     let result = match interpreter.evaluate(&expression) {
