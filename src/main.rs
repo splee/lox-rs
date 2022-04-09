@@ -16,13 +16,22 @@ struct Args {
     print_ast: bool,
 }
 
-fn main() {
+fn main() -> Result<()> {
     let args = Args::parse();
-    if let Err(why) = match args.file {
-        Some(pbuf) => run_file(pbuf, args.print_ast),
-        None => run_prompt(args.print_ast),
-    } {
-        eprintln!("ERROR: {}", why);
+    if let Some(pbuf) = args.file {
+        if let Err(why) = run_file(pbuf, args.print_ast) {
+            bail!(why)
+        }
+        return Ok(())
+    }
+
+    // If we got here, we're in prompt mode.
+    println!("Running lox interpreter...");
+    loop {
+        match run_prompt(args.print_ast) {
+            Ok(_) => continue,
+            Err(why) => eprintln!("ERROR: {}", why),
+        }
     }
 }
 
@@ -59,7 +68,6 @@ fn print_prompt() -> Result<()> {
 
 fn run_prompt(print_ast: bool) -> Result<()> {
     let mut exec_count = 0;
-    println!("Running lox interpreter...");
     let stdin = std::io::stdin();
     print_prompt()?;
     for line in stdin.lock().lines() {
@@ -101,7 +109,7 @@ fn run(script: &str, print_ast: bool) -> Result<Object> {
     let mut interpreter = Interpreter {};
     let result = match interpreter.evaluate(&expression) {
         Ok(v) => v,
-        Err(why) => bail!(why),
+        Err(why) => bail!(why)
     };
     Ok(result)
 }
