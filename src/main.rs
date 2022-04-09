@@ -1,12 +1,12 @@
 mod lib;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
-//use std::io::{BufRead, Write};
+use std::io::{BufRead, Write};
 use clap::Parser as ClapParser;
-use lib::ast::{Expr, LiteralValue};
 use lib::lox::AstPrinter;
 use lib::parser::parse;
-use lib::scanning::{scan, Token, TokenType};
+use lib::scanning::scan;
+use lib::interpreter::Interpreter;
 
 #[derive(ClapParser, Debug)]
 struct Args {
@@ -17,7 +17,7 @@ fn main() {
     let args = Args::parse();
     if let Err(why) = match args.file {
         Some(pbuf) => run_file(pbuf),
-        None => run_printer(),
+        None => run_prompt(),
     } {
         eprintln!("ERROR: {}", why);
     }
@@ -38,7 +38,6 @@ fn run_file(path: PathBuf) -> Result<()> {
     }
 }
 
-/*
 fn print_prompt() -> Result<()> {
     let stdout = std::io::stdout();
     let mut handle = stdout.lock();
@@ -66,7 +65,6 @@ fn run_prompt() -> Result<()> {
     }
     Ok(())
 }
-*/
 
 fn run(script: &str) -> Result<()> {
     println!("Script:");
@@ -78,36 +76,18 @@ fn run(script: &str) -> Result<()> {
         Err(why) => bail!(why),
     };
 
-    let mut printer = AstPrinter;
+    let mut printer = AstPrinter {};
     let expr_string = match printer.print(&expression) {
         Ok(v) => v,
         Err(why) => bail!(why)
     };
     println!("{}", expr_string);
-    Ok(())
-}
 
-fn run_printer() -> Result<()> {
-    let left = Box::new(Expr::Unary(
-        Token {
-            token_type: TokenType::Minus,
-            lexeme: String::from("-"),
-            line: 1,
-            line_pos: 1,
-        },
-        Box::new(Expr::Literal(LiteralValue::Number(123.0))),
-    ));
-    let op = Token {
-        token_type: TokenType::Star,
-        lexeme: String::from("*"),
-        line: 1,
-        line_pos: 1,
+    let mut interpreter = Interpreter {};
+    let result = match interpreter.evaluate(&expression) {
+        Ok(v) => v,
+        Err(why) => bail!(why),
     };
-    let right = Box::new(Expr::Grouping(Box::new(Expr::Literal(LiteralValue::Number(45.67)))));
-    let expression = Box::new(Expr::Binary(left, op, right));
-
-    let mut printer = AstPrinter;
-    println!("AST:");
-    println!("{}", printer.print(&expression).expect("Failed to print AST"));
+    println!("Object: {:?}", result);
     Ok(())
 }

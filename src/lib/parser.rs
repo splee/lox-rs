@@ -103,25 +103,21 @@ impl<'a> ParserState<'a> {
         self.match_advance2(t1, t2) || self.match_advance2(t3, t4)
     }
 
-    fn advance(&mut self) -> Option<&Token> {
+    fn advance(&mut self) -> bool {
         if self.is_consumed() {
-            None
+            false
         } else {
             self.current_idx += 1;
-            Some(&self.tokens[self.current_idx])
+            true
         }
     }
 
-    fn is_consumed(&self) -> bool {
-        self.is_consumed_ahead(0)
-    }
-
     fn is_peekable(&self) -> bool {
-        !self.is_consumed_ahead(1)
+        !self.is_consumed()
     }
 
-    fn is_consumed_ahead(&self, delta: usize) -> bool {
-        self.current_idx + delta >= self.tokens.len()
+    fn is_consumed(&self) -> bool {
+        self.current_idx >= self.tokens.len()
     }
 
     fn take_expr(&mut self) -> Result<Box<Expr>, ParseError> {
@@ -224,44 +220,39 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
 }
 
 fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
-    if state.match_advance(TokenType::False) {
-        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Boolean(false))));
-    }
-    if state.match_advance(TokenType::True) {
-        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Boolean(true))));
-    }
-    if state.match_advance(TokenType::Nil) {
-        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Nil)));
-    }
-    if state.match_advance(TokenType::Str) {
-        let t = state.previous()?;
-        state.expr = Some(Box::new(Expr::Literal(LiteralValue::String(t.lexeme.clone()))));
-    }
-    if state.match_advance(TokenType::Numeric) {
-        let t = state.previous()?;
-        let num = match t.lexeme.parse::<f64>() {
-            Ok(v) => v,
-            Err(why) => {
-                return Err(ParseError::Panic {
-                    line: t.line,
-                    lexeme: t.lexeme.to_string(),
-                    msg: format!("{}: {:#?}", "Failed to parse numeric", why),
-                })
+    let t = state.current()?;
+    let should_advance = match &t.token_type {
+        TokenType::LeftParen => false,
+        _ => true,
+    };
+    let raw_expr = match &t.token_type {
+        TokenType::False => Expr::Literal(LiteralValue::Boolean(false)),
+        TokenType::True => Expr::Literal(LiteralValue::Boolean(true)),
+        TokenType::Nil => Expr::Literal(LiteralValue::Nil),
+        TokenType::Str => Expr::Literal(LiteralValue::String(t.lexeme.clone())),
+        TokenType::Numeric => {
+            match t.lexeme.parse::<f64>() {
+                Ok(num) => Expr::Literal(LiteralValue::Number(num)),
+                Err(why) => {
+                    return Err(ParseError::Panic {
+                        line:t.line,
+                        lexeme: t.lexeme.to_string(),
+                        msg: format!("Failed to parse numeric: {:#}", why)
+                    });
+                }
             }
-        };
-        state.expr = Some(Box::new(Expr::Literal(LiteralValue::Number(num))));
+        },
+        TokenType::LeftParen => {
+            state.advance();
+            state = expression(state)?;
+            state.consume(&TokenType::RightParen, "Expect ')' after expression")?;
+            Expr::Grouping(state.take_expr()?)
+        },
+        _ => return Err(ParseError::InternalError { msg: format!("primary statement not found: {:?}", t)})
+    };
+    if should_advance {
+        state.advance();
     }
-    if state.match_advance(TokenType::LeftParen) {
-        state = expression(state)?;
-        // Ensure the parentheses are closed
-        state.consume(&TokenType::RightParen, "Expect ')' after expression")?;
-        state.expr = Some(Box::new(Expr::Grouping(state.take_expr()?)));
-    }
-    if let None = state.expr {
-        Err(ParseError::InternalError {
-            msg: format!("Unsupported token: {:?}", state.current()?),
-        })
-    } else {
-        Ok(state)
-    }
+    state.expr = Some(Box::new(raw_expr));
+    Ok(state)
 }

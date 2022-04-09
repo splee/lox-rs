@@ -8,7 +8,7 @@ use crate::lib::{
 pub struct Interpreter {}
 
 impl Interpreter {
-    fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
+    pub fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
         expression.accept(self)
     }
 }
