@@ -7,6 +7,7 @@ use lib::lox::AstPrinter;
 use lib::parser::parse;
 use lib::scanning::scan;
 use lib::interpreter::Interpreter;
+use lib::object::Object;
 
 #[derive(ClapParser, Debug)]
 struct Args {
@@ -35,7 +36,10 @@ fn run_file(path: PathBuf, print_ast: bool) -> Result<()> {
         Err(_) => bail!("Failed to read file."),
     };
     match std::str::from_utf8(&content) {
-        Ok(c) => run(c, print_ast),
+        Ok(c) => {
+            let _ = run(c, print_ast)?;
+            Ok(())
+        },
         Err(_) => bail!("Failed to decode unicode."),
     }
 }
@@ -54,13 +58,22 @@ fn print_prompt() -> Result<()> {
 }
 
 fn run_prompt(print_ast: bool) -> Result<()> {
+    let mut exec_count = 0;
     println!("Running lox interpreter...");
     let stdin = std::io::stdin();
     print_prompt()?;
     for line in stdin.lock().lines() {
-        println!("");
         match line {
-            Ok(l) => run(&l, print_ast)?,
+            Ok(l) => {
+                let stringified = match run(&l, print_ast)? {
+                    Object::Boolean(v) => format!("{}", v),
+                    Object::Nil => String::from("nil"),
+                    Object::Number(v) => format!("{}", v),
+                    Object::String(v) => v.clone(),
+                };
+                exec_count += 1;
+                println!("[{}]: {}", exec_count, stringified);
+            }
             Err(_) => bail!("Failed to read line"),
         }
         print_prompt()?;
@@ -68,7 +81,7 @@ fn run_prompt(print_ast: bool) -> Result<()> {
     Ok(())
 }
 
-fn run(script: &str, print_ast: bool) -> Result<()> {
+fn run(script: &str, print_ast: bool) -> Result<Object> {
     let tokens = scan(script)?;
 
     let expression = match parse(&tokens) {
@@ -90,6 +103,5 @@ fn run(script: &str, print_ast: bool) -> Result<()> {
         Ok(v) => v,
         Err(why) => bail!(why),
     };
-    println!("Object: {:?}", result);
-    Ok(())
+    Ok(result)
 }

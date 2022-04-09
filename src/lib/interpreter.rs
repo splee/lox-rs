@@ -66,6 +66,13 @@ impl ExprVisitor<Object> for Interpreter {
                     _ => return unsupported_operation_error("nil", op),
                 }
             }
+            (Object::Boolean(l), Object::Boolean(r)) => {
+                match &op.token_type {
+                    TokenType::EqualEqual => Object::Boolean(l == r),
+                    TokenType::BangEqual => Object::Boolean(l != r),
+                    _ => return unsupported_operation_error("boolean", op),
+                }
+            }
             // Not sure if gross or elegant...
             (_, _) => return unsupported_operation_error("supplied combination of", op),
         };
