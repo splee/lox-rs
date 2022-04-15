@@ -1,3 +1,4 @@
-fun echo() {
-  print("echo");
-}
+print 150 * 2;
+print "test" + "ing";
+print 1 + 2;
+print 1 == 0;

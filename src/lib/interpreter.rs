@@ -1,9 +1,10 @@
 use crate::lib::{
-    ast::{Expr, ExprVisitor, LiteralValue},
+    ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
     err::LoxError,
     scanning::{Token, TokenType},
     object::Object,
 };
+
 
 pub struct Interpreter {}
 
@@ -11,15 +12,22 @@ impl Interpreter {
     pub fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
         expression.accept(self)
     }
+
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+        for stmt in statements {
+            stmt.accept(self)?;
+        }
+        Ok(())
+    }
 }
 
 impl ExprVisitor<Object> for Interpreter {
 
     fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<Object, LoxError> {
         match value {
-            LiteralValue::Boolean(v) => Ok(Object::Boolean(v.clone())),
+            LiteralValue::Boolean(v) => Ok(Object::Boolean(*v)),
             LiteralValue::Nil => Ok(Object::Nil),
-            LiteralValue::Number(v) => Ok(Object::Number(v.clone())),
+            LiteralValue::Number(v) => Ok(Object::Number(*v)),
             LiteralValue::String(v) => Ok(Object::String(v.clone())),
         }
     }
@@ -44,8 +52,8 @@ impl ExprVisitor<Object> for Interpreter {
                     TokenType::GreaterEqual => Object::Boolean(l >= r),
                     TokenType::Less => Object::Boolean(l < r),
                     TokenType::LessEqual => Object::Boolean(l <= r),
-                    TokenType::EqualEqual => Object::Boolean(l == r),
-                    TokenType::BangEqual => Object::Boolean(l != r),
+                    TokenType::EqualEqual => Object::Boolean((l - r).abs() < f64::EPSILON),
+                    TokenType::BangEqual => Object::Boolean((l - r).abs() > f64::EPSILON),
                     _ => return unsupported_operation_error("numeric", op),
                 }
             },
@@ -106,6 +114,19 @@ impl ExprVisitor<Object> for Interpreter {
             Object::String(_) => return unsupported_operation_error("string", op),
         };
         Ok(return_expr)
+    }
+}
+
+impl StmtVisitor<()> for Interpreter {
+    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
+        self.evaluate(expression)?;
+        Ok(())
+    }
+
+    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
+        let value = self.evaluate(expression)?;
+        println!("{:?}", value);
+        Ok(())
     }
 }
 

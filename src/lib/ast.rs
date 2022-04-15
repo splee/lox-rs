@@ -34,3 +34,23 @@ pub trait ExprVisitor<T> {
     fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<T, LoxError>;
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Result<T, LoxError>;
 }
+
+
+pub enum Stmt {
+    Expression(Box<Expr>),
+    Print(Box<Expr>)
+}
+
+impl Stmt {
+    pub fn accept<T>(&self, visitor: &mut dyn StmtVisitor<T>) -> Result<T, LoxError> {
+        match self {
+            Stmt::Expression(expression) => visitor.visit_expression_stmt(expression),
+            Stmt::Print(expression) => visitor.visit_print_stmt(expression),
+        }
+    }
+}
+
+pub trait StmtVisitor<T> {
+    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<T, LoxError>;
+    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<T, LoxError>;
+}

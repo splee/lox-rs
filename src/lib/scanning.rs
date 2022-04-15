@@ -62,10 +62,7 @@ pub enum TokenType {
 impl TokenType {
     pub fn matches(&self, t: &TokenType) -> bool {
         let pair = (self, t);
-        match pair {
-            (this, that) if this == that => true,
-            _ => false,
-        }
+        matches!(pair, (this, that) if this == that)
     }
 }
 
@@ -108,7 +105,7 @@ impl<'a> Scanner<'a> {
     fn new(source: &'a str) -> Self {
         let chars: Peekable<Chars<'a>> = source.chars().peekable();
         Scanner {
-            chars: chars,
+            chars,
             current: 0,
             line_pos: 0,
             line: 1,
@@ -130,11 +127,7 @@ impl<'a> Scanner<'a> {
     fn peek_match(&mut self, val: char) -> bool {
         match self.chars.peek() {
             Some(v) => {
-                if val == *v {
-                    true
-                } else {
-                    false
-                }
+                val == *v
             }
             None => false,
         }
@@ -217,7 +210,7 @@ impl<'a> Scanner<'a> {
                 TokenType::Str => self.consume_string()?,
                 TokenType::Comment => self.consume_comment()?,
                 TokenType::IdentifierOrKeyword => self.consume_identifier_or_keyword(c)?,
-                TokenType::Numeric => String::from(self.consume_numeric(c)?),
+                TokenType::Numeric => self.consume_numeric(c)?,
                 TokenType::BangEqual
                 | TokenType::EqualEqual
                 | TokenType::LessEqual
@@ -226,10 +219,7 @@ impl<'a> Scanner<'a> {
             }
         };
         // Now we have the lexeme, we can resolve IdentifierOrKeyword if needed.
-        let should_resolve = match &token_type {
-            TokenType::IdentifierOrKeyword => true,
-            _ => false,
-        };
+        let should_resolve = matches!(&token_type, TokenType::IdentifierOrKeyword);
         if should_resolve {
             token_type = match KEYWORDS.get(&lexeme).cloned() {
                 Some(t) => t,
@@ -249,18 +239,11 @@ impl<'a> Scanner<'a> {
 
     fn consume_until(&mut self, breaker: char) -> Result<String> {
         let mut content: Vec<char> = Vec::new();
-        loop {
-            match self.chars.peek() {
-                Some(v) => {
-                    if *v == breaker {
-                        break;
-                    }
-                    content.push(self.advance()?);
-                }
-                None => {
-                    break;
-                }
+        while let Some(v) = self.chars.peek() {
+            if *v == breaker {
+                break;
             }
+            content.push(self.advance()?);
         }
         Ok(String::from_iter(content))
     }
@@ -283,19 +266,12 @@ impl<'a> Scanner<'a> {
 
     fn consume_numeric(&mut self, first_char: char) -> Result<String> {
         let mut content: Vec<char> = vec![first_char];
-        loop {
-            match self.chars.peek() {
-                Some(vref) => {
-                    let v = *vref;
-                    if is_numeric(v) || v == '.' {
-                        content.push(self.advance()?);
-                    } else {
-                        break;
-                    }
-                }
-                None => {
-                    break;
-                }
+        while let Some(vref) = self.chars.peek() {
+            let v = *vref;
+            if is_numeric(v) || v == '.' {
+                content.push(self.advance()?);
+            } else {
+                break;
             }
         }
         let str_val = String::from_iter(content);
@@ -309,19 +285,12 @@ impl<'a> Scanner<'a> {
 
     fn consume_identifier_or_keyword(&mut self, first_char: char) -> Result<String> {
         let mut content: Vec<char> = vec![first_char];
-        loop {
-            match self.chars.peek() {
-                Some(vref) => {
-                    let v = *vref;
-                    if is_alpha_numeric(v) {
-                        content.push(self.advance()?)
-                    } else {
-                        break;
-                    }
-                }
-                None => {
-                    break;
-                }
+        while let Some(vref) = self.chars.peek() {
+            let v = *vref;
+            if is_alpha_numeric(v) || v == '.' {
+                content.push(self.advance()?);
+            } else {
+                break;
             }
         }
         Ok(String::from_iter(content))
@@ -330,22 +299,15 @@ impl<'a> Scanner<'a> {
 
 pub fn scan(source: &str) -> Result<Vec<Token>> {
     let mut scanner = Scanner::new(source);
-    loop {
-        match scanner.scan_next() {
-            Ok(()) => continue,
-            Err(_) => {
-                break;
-            }
-        }
+    while let Ok(()) = scanner.scan_next() {
+        // just consume the whole thing
+        continue
     }
     // Do the final whitespace filtering
     let filtered_tokens: Vec<Token> = scanner
         .tokens
         .into_iter()
-        .filter(|t| match t.token_type {
-            TokenType::Whitespace | TokenType::Newline => false,
-            _ => true,
-        })
+        .filter(|t| !matches!(t.token_type, TokenType::Whitespace | TokenType::Newline))
         .collect();
 
     Ok(filtered_tokens)
@@ -356,7 +318,7 @@ fn is_numeric(c: char) -> bool {
 }
 
 fn is_alpha(c: char) -> bool {
-    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
+    ('a'..='z').contains(&c) || ('A'..='Z').contains(&c) || c == '_'
 }
 
 fn is_alpha_numeric(c: char) -> bool {

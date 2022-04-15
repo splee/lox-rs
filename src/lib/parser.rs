@@ -1,4 +1,4 @@
-use crate::lib::ast::{Expr, LiteralValue};
+use crate::lib::ast::{Expr, LiteralValue, Stmt};
 use crate::lib::scanning::{Token, TokenType};
 use thiserror::Error;
 
@@ -19,6 +19,7 @@ struct ParserState<'a> {
     tokens: &'a [Token],
     current_idx: usize,
     expr: Option<Box<Expr>>,
+    stmts: Vec<Stmt>,
 }
 
 impl<'a> ParserState<'a> {
@@ -27,19 +28,21 @@ impl<'a> ParserState<'a> {
             tokens,
             current_idx: 0,
             expr: None,
+            stmts: Vec::new(),
         }
     }
 
-    fn current(&self) -> Result<&Token, ParseError> {
+    fn current(&mut self) -> Result<&Token, ParseError> {
         if self.is_consumed() {
-            return Err(ParseError::InternalError {
+            Err(ParseError::InternalError {
                 msg: "current should always be valid but is out of bounds".to_owned(),
-            });
+            })
+        } else {
+            Ok(&self.tokens[self.current_idx])
         }
-        Ok(&self.tokens[self.current_idx])
     }
 
-    fn previous(&self) -> Result<&Token, ParseError> {
+    fn previous(&mut self) -> Result<&Token, ParseError> {
         if self.current_idx > 0 {
             Ok(&self.tokens[self.current_idx - 1])
         } else {
@@ -49,7 +52,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn peek(&self) -> Option<&Token> {
+    fn peek(&mut self) -> Option<&Token> {
         if self.is_peekable() {
             Some(&self.tokens[self.current_idx])
         } else {
@@ -61,21 +64,27 @@ impl<'a> ParserState<'a> {
         if let Some(t) = self.peek() {
             if expected.matches(&t.token_type) {
                 self.advance();
-                return Ok(());
+                Ok(())
             } else {
-                return Err(ParseError::Panic {
+                Err(ParseError::Panic {
                     line: t.line,
                     lexeme: t.lexeme.to_string(),
                     msg: message.to_owned(),
-                });
+                })
             }
         } else {
-            let t = self.current()?;
-            return Err(ParseError::Panic {
+            let t = {
+                if self.is_consumed() {
+                    self.previous()?
+                } else {
+                    self.current()?
+                }
+            };
+            Err(ParseError::Panic {
                 line: t.line,
                 lexeme: t.lexeme.to_string(),
                 msg: message.to_owned(),
-            });
+            })
         }
     }
 
@@ -86,7 +95,7 @@ impl<'a> ParserState<'a> {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     fn match_advance2(&mut self, t1: TokenType, t2: TokenType) -> bool {
@@ -112,11 +121,11 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn is_peekable(&self) -> bool {
+    fn is_peekable(&mut self) -> bool {
         !self.is_consumed()
     }
 
-    fn is_consumed(&self) -> bool {
+    fn is_consumed(&mut self) -> bool {
         self.current_idx >= self.tokens.len()
     }
 
@@ -124,22 +133,37 @@ impl<'a> ParserState<'a> {
         match self.expr.take() {
             Some(v) => Ok(v),
             None => Err(ParseError::InternalError {
-                msg: format!("{}", "expected expr to be populated"),
+                msg: "expected expr to be populated".to_string(),
             }),
         }
     }
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Box<Expr>, ParseError> {
+pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, ParseError> {
     // TODO: Add error handling/parser synchronization
     let mut state = ParserState::new(tokens);
-    state = expression(state)?;
-    match state.expr {
-        Some(e) => Ok(e),
-        None => Err(ParseError::InternalError {
-            msg: format!("{}", "Failed to produce expression"),
-        }),
+    while !state.is_consumed() {
+        state = statement(state)?;
     }
+    Ok(state.stmts)
+}
+
+fn statement(mut state: ParserState) -> Result<ParserState, ParseError> {
+   let t = state.current()?;
+   let is_print = matches!(&t.token_type, TokenType::Print);
+   if is_print {
+       // Skip the print token itself and parse the remainder of the tokens.
+       state.advance();
+   }
+   let mut state = expression(state)?;
+   let expr = state.take_expr()?;
+   let stmt = match is_print {
+       true => Stmt::Print(expr),
+       false => Stmt::Expression(expr)
+   };
+   state.consume(&TokenType::Semicolon, "Expect ';' after statement")?;
+   state.stmts.push(stmt);
+   Ok(state)
 }
 
 fn expression(state: ParserState) -> Result<ParserState, ParseError> {
@@ -221,10 +245,7 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
 
 fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
     let t = state.current()?;
-    let should_advance = match &t.token_type {
-        TokenType::LeftParen => false,
-        _ => true,
-    };
+    let should_advance = !matches!(&t.token_type, TokenType::LeftParen);
     let raw_expr = match &t.token_type {
         TokenType::False => Expr::Literal(LiteralValue::Boolean(false)),
         TokenType::True => Expr::Literal(LiteralValue::Boolean(true)),

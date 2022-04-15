@@ -1,5 +1,5 @@
 use crate::lib::{
-    ast::{Expr, ExprVisitor, LiteralValue},
+    ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
     scanning::Token,
     err::LoxError,
 };
@@ -7,8 +7,8 @@ use crate::lib::{
 pub struct AstPrinter;
 
 impl AstPrinter {
-    pub fn print(&mut self, expression: &Expr) -> Result<String, LoxError> {
-        expression.accept(self)
+    pub fn print(&mut self, statement: &Stmt) -> Result<String, LoxError> {
+        statement.accept(self)
     }
 }
 
@@ -34,5 +34,16 @@ impl ExprVisitor<String> for AstPrinter {
 
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Result<String, LoxError> {
         Ok(format!("({:?} {})", operator, right.accept(self)?))
+    }
+}
+
+impl StmtVisitor<String> for AstPrinter {
+
+    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<String, LoxError> {
+        Ok(format!("(stmt {})", expression.accept(self)?))
+    }
+
+    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<String, LoxError> {
+        Ok(format!("(print {})", expression.accept(self)?))
     }
 }
