@@ -15,7 +15,7 @@ impl fmt::Display for Object {
             Object::Nil => write!(f, "nil"),
             Object::Number(v) => {
                 if v % 1.0 > 0.0 {
-                    write!(f, "{:.2}", v)
+                    write!(f, "{}", v)
                 } else {
                     write!(f, "{:.0}", v)
                 }
