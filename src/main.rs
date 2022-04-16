@@ -35,7 +35,6 @@ fn main() -> Result<()> {
 }
 
 fn run_file(path: PathBuf, print_ast: bool) -> Result<()> {
-    println!("Running lox source at {}", path.display());
     if !path.exists() || !path.is_file() {
         bail!("Path does not exist or is not a valid file.");
     }
