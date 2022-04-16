@@ -125,7 +125,7 @@ impl StmtVisitor<()> for Interpreter {
 
     fn visit_print_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
         let value = self.evaluate(expression)?;
-        println!("{:?}", value);
+        println!("{}", value);
         Ok(())
     }
 }
