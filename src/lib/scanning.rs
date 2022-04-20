@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use phf::phf_map;
 use std::iter::Peekable;
 use std::str::Chars;
+use tracing::{debug, error, info, warn, instrument};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -60,6 +61,7 @@ pub enum TokenType {
 }
 
 impl TokenType {
+
     pub fn matches(&self, t: &TokenType) -> bool {
         let pair = (self, t);
         matches!(pair, (this, that) if this == that)
@@ -93,6 +95,7 @@ pub struct Token {
     pub line_pos: usize,
 }
 
+#[derive(Debug)]
 pub struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     current: usize,
@@ -133,6 +136,7 @@ impl<'a> Scanner<'a> {
         }
     }
 
+    #[instrument(skip(self))]
     fn scan_next(&mut self) -> Result<()> {
         let c = self.advance()?;
         // collect metadata about our position in the source script.
@@ -201,7 +205,11 @@ impl<'a> Scanner<'a> {
                 } else if is_alpha(default) {
                     TokenType::IdentifierOrKeyword
                 } else {
-                    bail!("Unknown token: {}", c);
+                    // Strings and chars and byte-buffers, oh my!
+                    let mut b = [0; 4];
+                    let charstr = c.encode_utf8(&mut b);
+                    error!(character = charstr, line_pos = line_pos, line = line, "Unknown Token");
+                    bail!("Unknown Token: {}", c);
                 }
             }
         };
@@ -226,13 +234,13 @@ impl<'a> Scanner<'a> {
                 None => TokenType::Identifier,
             }
         }
-
         let token = Token {
             token_type,
             lexeme,
             line,
             line_pos,
         };
+        debug!(?token.token_type, token.line_pos, token.lexeme = token.lexeme.as_str());
         self.tokens.push(token);
         Ok(())
     }
@@ -297,18 +305,21 @@ impl<'a> Scanner<'a> {
     }
 }
 
+#[instrument(skip(source))]
 pub fn scan(source: &str) -> Result<Vec<Token>> {
     let mut scanner = Scanner::new(source);
     while let Ok(()) = scanner.scan_next() {
         // just consume the whole thing
         continue
     }
+    info!("Finished scanning tokens");
     // Do the final whitespace filtering
     let filtered_tokens: Vec<Token> = scanner
         .tokens
         .into_iter()
         .filter(|t| !matches!(t.token_type, TokenType::Whitespace | TokenType::Newline))
         .collect();
+    debug!("Filtered whitespace");
 
     Ok(filtered_tokens)
 }

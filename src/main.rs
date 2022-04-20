@@ -2,11 +2,14 @@ mod lib;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 use std::io::{BufRead, Write};
+use std::io;
 use clap::Parser as ClapParser;
 use lib::lox::AstPrinter;
 use lib::parser::parse;
 use lib::scanning::scan;
 use lib::interpreter::Interpreter;
+use tracing::{debug, error, info, warn, instrument};
+use tracing_subscriber::filter::EnvFilter;
 
 #[derive(ClapParser, Debug)]
 struct Args {
@@ -15,22 +18,41 @@ struct Args {
     print_ast: bool,
 }
 
+fn setup_tracing() -> Result<()> {
+    let filter: EnvFilter = "trace".parse().expect("filter should parse");
+    if let Err(why) = tracing_subscriber::fmt()
+        .pretty()
+        .with_writer(io::stderr)
+        .with_env_filter(filter)
+        .try_init() {
+            bail!(why)
+        } else {
+            Ok(())
+        }
+}
+
+#[instrument]
 fn main() -> Result<()> {
+    setup_tracing()?;
     let args = Args::parse();
     if let Some(pbuf) = args.file {
+        info!(path = pbuf.to_str(), "Executing lox file");
         if let Err(why) = run_file(pbuf, args.print_ast) {
+            error!("Failed to execute file - {}", why);
             bail!(why)
         }
         return Ok(())
     }
 
     // If we got here, we're in prompt mode.
+    debug!("No path found in args, starting in interactive mode.");
     println!("Running lox interpreter...");
-    loop {
-        match run_prompt(args.print_ast) {
-            Ok(_) => continue,
-            Err(why) => eprintln!("ERROR: {}", why),
-        }
+    match run_prompt(args.print_ast) {
+        Ok(_) => Ok(()),
+        Err(why) => {
+            error!("Error running interactive interpreter: {}", why);
+            bail!(why)
+        },
     }
 }
 
@@ -79,12 +101,17 @@ fn run_prompt(print_ast: bool) -> Result<()> {
     Ok(())
 }
 
+#[instrument(skip(script))]
 fn run(script: &str, print_ast: bool) -> Result<()> {
     let tokens = scan(script)?;
+    debug!(tokens = tokens.len(), "Tokens scanned successfully.");
 
     let statements = match parse(&tokens) {
         Ok(v) => v,
-        Err(why) => bail!(why),
+        Err(why) => {
+            error!("Failed to parse statements: {}", why);
+            bail!(why);
+        },
     };
 
     if print_ast {
