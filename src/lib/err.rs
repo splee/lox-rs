@@ -7,5 +7,17 @@ pub enum LoxError {
     Runtime {
         message: String,
         at: Token,
-    }
+    },
+
+    #[error("Parse error on line {line} at '{lexeme}': {message}")]
+    Parse {
+        line: usize,
+        lexeme: String,
+        message: String,
+    },
+
+    #[error("Internal error: {message}")]
+    Internal {
+        message: String,
+    },
 }

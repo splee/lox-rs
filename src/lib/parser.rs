@@ -1,19 +1,6 @@
 use crate::lib::ast::{Expr, LiteralValue, Stmt};
 use crate::lib::scanning::{Token, TokenType};
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ParseError {
-    #[error("{line:?} at '{lexeme:?}': {msg:?}")]
-    Panic {
-        line: usize,
-        lexeme: String,
-        msg: String,
-    },
-
-    #[error("An internal parser error occurred: {msg:?}")]
-    InternalError { msg: String },
-}
+use crate::lib::err::LoxError;
 
 struct ParserState<'a> {
     tokens: &'a [Token],
@@ -32,22 +19,22 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn current(&mut self) -> Result<&Token, ParseError> {
+    fn current(&mut self) -> Result<&Token, LoxError> {
         if self.is_consumed() {
-            Err(ParseError::InternalError {
-                msg: "current should always be valid but is out of bounds".to_owned(),
+            Err(LoxError::Internal {
+                message: "current should always be valid but is out of bounds".to_owned(),
             })
         } else {
             Ok(&self.tokens[self.current_idx])
         }
     }
 
-    fn previous(&mut self) -> Result<&Token, ParseError> {
+    fn previous(&mut self) -> Result<&Token, LoxError> {
         if self.current_idx > 0 {
             Ok(&self.tokens[self.current_idx - 1])
         } else {
-            Err(ParseError::InternalError {
-                msg: "previous should never be called without first calling advance".to_owned(),
+            Err(LoxError::Internal {
+                message: "previous should never be called without first calling advance".to_owned(),
             })
         }
     }
@@ -60,16 +47,16 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume(&mut self, expected: &TokenType, message: &str) -> Result<(), ParseError> {
+    fn consume(&mut self, expected: &TokenType, message: &str) -> Result<(), LoxError> {
         if let Some(t) = self.peek() {
             if expected.matches(&t.token_type) {
                 self.advance();
                 Ok(())
             } else {
-                Err(ParseError::Panic {
+                Err(LoxError::Parse {
                     line: t.line,
                     lexeme: t.lexeme.to_string(),
-                    msg: message.to_owned(),
+                    message: message.to_owned(),
                 })
             }
         } else {
@@ -80,10 +67,10 @@ impl<'a> ParserState<'a> {
                     self.current()?
                 }
             };
-            Err(ParseError::Panic {
+            Err(LoxError::Parse {
                 line: t.line,
                 lexeme: t.lexeme.to_string(),
-                msg: message.to_owned(),
+                message: message.to_owned(),
             })
         }
     }
@@ -129,17 +116,17 @@ impl<'a> ParserState<'a> {
         self.current_idx >= self.tokens.len()
     }
 
-    fn take_expr(&mut self) -> Result<Box<Expr>, ParseError> {
+    fn take_expr(&mut self) -> Result<Box<Expr>, LoxError> {
         match self.expr.take() {
             Some(v) => Ok(v),
-            None => Err(ParseError::InternalError {
-                msg: "expected expr to be populated".to_string(),
+            None => Err(LoxError::Internal {
+                message: "expected expr to be populated".to_string(),
             }),
         }
     }
 }
 
-pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, ParseError> {
+pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, LoxError> {
     // TODO: Add error handling/parser synchronization
     let mut state = ParserState::new(tokens);
     while !state.is_consumed() {
@@ -148,7 +135,7 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, ParseError> {
     Ok(state.stmts)
 }
 
-fn statement(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
    let t = state.current()?;
    let is_print = matches!(&t.token_type, TokenType::Print);
    if is_print {
@@ -166,11 +153,11 @@ fn statement(mut state: ParserState) -> Result<ParserState, ParseError> {
    Ok(state)
 }
 
-fn expression(state: ParserState) -> Result<ParserState, ParseError> {
+fn expression(state: ParserState) -> Result<ParserState, LoxError> {
     equality(state)
 }
 
-fn equality(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn equality(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = comparison(state)?;
     let mut expr = state.take_expr()?;
     while state.match_advance2(TokenType::BangEqual, TokenType::EqualEqual) {
@@ -183,7 +170,7 @@ fn equality(mut state: ParserState) -> Result<ParserState, ParseError> {
     Ok(state)
 }
 
-fn comparison(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn comparison(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = term(state)?;
     let mut expr = state.take_expr()?;
 
@@ -202,7 +189,7 @@ fn comparison(mut state: ParserState) -> Result<ParserState, ParseError> {
     Ok(state)
 }
 
-fn term(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn term(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = factor(state)?;
     let mut expr = state.take_expr()?;
 
@@ -216,7 +203,7 @@ fn term(mut state: ParserState) -> Result<ParserState, ParseError> {
     Ok(state)
 }
 
-fn factor(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn factor(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = unary(state)?;
     let mut expr = state.take_expr()?;
 
@@ -230,7 +217,7 @@ fn factor(mut state: ParserState) -> Result<ParserState, ParseError> {
     Ok(state)
 }
 
-fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn unary(mut state: ParserState) -> Result<ParserState, LoxError> {
     if state.match_advance2(TokenType::Bang, TokenType::Minus) {
         let operator = state.previous()?.clone();
         state = unary(state)?;
@@ -243,7 +230,7 @@ fn unary(mut state: ParserState) -> Result<ParserState, ParseError> {
     }
 }
 
-fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
+fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
     let t = state.current()?;
     let should_advance = !matches!(&t.token_type, TokenType::LeftParen);
     let raw_expr = match &t.token_type {
@@ -255,10 +242,10 @@ fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
             match t.lexeme.parse::<f64>() {
                 Ok(num) => Expr::Literal(LiteralValue::Number(num)),
                 Err(why) => {
-                    return Err(ParseError::Panic {
+                    return Err(LoxError::Parse {
                         line:t.line,
                         lexeme: t.lexeme.to_string(),
-                        msg: format!("Failed to parse numeric: {:#}", why)
+                        message: format!("Failed to parse numeric: {:#}", why)
                     });
                 }
             }
@@ -269,7 +256,7 @@ fn primary(mut state: ParserState) -> Result<ParserState, ParseError> {
             state.consume(&TokenType::RightParen, "Expect ')' after expression")?;
             Expr::Grouping(state.take_expr()?)
         },
-        _ => return Err(ParseError::InternalError { msg: format!("primary statement not found: {:?}", t)})
+        _ => return Err(LoxError::Internal { message: format!("primary statement not found: {:?}", t)})
     };
     if should_advance {
         state.advance();
