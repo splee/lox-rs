@@ -96,7 +96,7 @@ pub struct Token {
 }
 
 #[derive(Debug)]
-pub struct Scanner<'a> {
+struct Scanner<'a> {
     chars: Peekable<Chars<'a>>,
     current: usize,
     line: usize,
@@ -334,4 +334,35 @@ fn is_alpha(c: char) -> bool {
 
 fn is_alpha_numeric(c: char) -> bool {
     is_alpha(c) || is_numeric(c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_whitespace_is_filtered() -> Result<()> {
+        let src = "\r\t ";
+        let tokens = scan(src)?;
+        assert_eq!(tokens.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_keywords_are_identified() -> Result<()> {
+        let keyword_soup = KEYWORDS.keys()
+            .map(|k| &**k)
+            .collect::<Vec<&str>>()
+            .join(" ");
+        let tokens = scan(&keyword_soup)?;
+        assert_eq!(tokens.len(), KEYWORDS.len());
+        for t in tokens {
+            let expected = match KEYWORDS.get(&t.lexeme) {
+                Some(t) => t,
+                None => bail!("Unable to find expected token type for keyword '{}'", t.lexeme),
+            };
+            assert_eq!(&t.token_type, expected);
+        }
+        Ok(())
+    }
 }
