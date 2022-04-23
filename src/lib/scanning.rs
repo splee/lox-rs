@@ -393,7 +393,7 @@ mod tests {
         let token_soup = &token_types.into_iter()
             .map(|(l, _t)| l)
             .collect::<Vec<&str>>()
-            .join(" \n");
+            .join(" ");
         
         let tokens = scan(&token_soup)?;
 
