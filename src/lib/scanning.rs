@@ -154,7 +154,6 @@ impl<'a> Scanner<'a> {
             '+' => TokenType::Plus,
             ';' => TokenType::Semicolon,
             '*' => TokenType::Star,
-            //
             '!' => {
                 if self.peek_match('=') {
                     TokenType::BangEqual
@@ -257,6 +256,8 @@ impl<'a> Scanner<'a> {
     }
 
     fn consume_comment(&mut self) -> Result<String> {
+        // Skip the second slash
+        self.advance()?;
         // Consume the rest of the line.
         let content = self.consume_until('\n')?;
         // Update line specific info
@@ -362,6 +363,106 @@ mod tests {
                 None => bail!("Unable to find expected token type for keyword '{}'", t.lexeme),
             };
             assert_eq!(&t.token_type, expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_single_and_double_char_tokens() -> Result<()> {
+        let token_types = [
+            ("(", &TokenType::LeftParen),
+            (")", &TokenType::RightParen),
+            ("{", &TokenType::LeftBrace),
+            ("}", &TokenType::RightBrace),
+            (",", &TokenType::Comma),
+            (".", &TokenType::Dot),
+            ("-", &TokenType::Minus),
+            ("+", &TokenType::Plus),
+            (";", &TokenType::Semicolon),
+            ("/", &TokenType::Slash),
+            ("*", &TokenType::Star),
+            ("!", &TokenType::Bang),
+            ("!=", &TokenType::BangEqual),
+            ("=", &TokenType::Equal),
+            ("==", &TokenType::EqualEqual),
+            (">", &TokenType::Greater),
+            (">=", &TokenType::GreaterEqual),
+            ("<", &TokenType::Less),
+            ("<=", &TokenType::LessEqual),
+        ];
+        let token_soup = &token_types.into_iter()
+            .map(|(l, _t)| l)
+            .collect::<Vec<&str>>()
+            .join(" \n");
+        
+        let tokens = scan(&token_soup)?;
+
+        // TODO: Figure out enumerate for iterators of tuples.
+        let mut i: usize = 0;
+        for (lexeme, ttype) in &token_types {
+            let token = match tokens.get(i) {
+                Some(t) => t,
+                None => bail!("Expecting {:?} at idx {}", ttype, i),
+            };
+            assert_eq!(*lexeme, &token.lexeme);
+            assert_eq!(*ttype, &token.token_type);
+
+            i += 1;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_str() -> Result<()> {
+        let str_str = "\"This is a string.\"";
+        let tokens = scan(str_str)?;
+        let t = match tokens.first() {
+            Some(t) => t,
+            None => bail!("No tokens returned!"),
+        };
+        assert_eq!(&t.token_type, &TokenType::Str);
+        assert_eq!(&t.lexeme, "This is a string.");
+        Ok(())
+    }
+     
+    #[test]
+    fn test_numerics() -> Result<()> {
+        let nums = ["12345", "123.45"];
+        let num_str = nums.join(" ");
+        let tokens = scan(&num_str)?;
+        let mut i = 0usize;
+        for expected_num in nums {
+            let t = match tokens.get(i) {
+                Some(t) => t,
+                None => bail!("Expected token at idx {}", i),
+            };
+            assert_eq!(expected_num, &t.lexeme);
+            assert_eq!(&TokenType::Numeric, &t.token_type);
+            i += 1;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_comments() -> Result<()> {
+        let mixed_str = "12345 // This is a test comment\n//Full line comment.";
+        let tokens = scan(mixed_str)?;
+        let expected = [
+            ("12345", &TokenType::Numeric),
+            // TODO: Should we be trimming the leading whitespace?
+            (" This is a test comment", &TokenType::Comment),
+            ("Full line comment.", &TokenType::Comment),
+        ];
+
+        let mut i = 0;
+        for (lexeme, ttype) in expected {
+            let t = match tokens.get(i) {
+                Some(t) => t,
+                None => bail!("Failed to find expected token at idx {}", i)
+            };
+            assert_eq!(&t.lexeme, lexeme);
+            assert_eq!(&t.token_type, ttype);
+            i += 1;
         }
         Ok(())
     }
