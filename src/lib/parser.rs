@@ -75,6 +75,23 @@ impl<'a> ParserState<'a> {
         }
     }
 
+    fn advance(&mut self) -> bool {
+        if self.is_consumed() {
+            false
+        } else {
+            self.current_idx += 1;
+            true
+        }
+    }
+
+    fn is_peekable(&mut self) -> bool {
+        !self.is_consumed()
+    }
+
+    fn is_consumed(&mut self) -> bool {
+        self.current_idx >= self.tokens.len()
+    }
+
     fn match_advance(&mut self, expected: TokenType) -> bool {
         if let Some(t) = self.peek() {
             if expected.matches(&t.token_type) {
@@ -97,23 +114,6 @@ impl<'a> ParserState<'a> {
         t4: TokenType,
     ) -> bool {
         self.match_advance2(t1, t2) || self.match_advance2(t3, t4)
-    }
-
-    fn advance(&mut self) -> bool {
-        if self.is_consumed() {
-            false
-        } else {
-            self.current_idx += 1;
-            true
-        }
-    }
-
-    fn is_peekable(&mut self) -> bool {
-        !self.is_consumed()
-    }
-
-    fn is_consumed(&mut self) -> bool {
-        self.current_idx >= self.tokens.len()
     }
 
     fn take_expr(&mut self) -> Result<Box<Expr>, LoxError> {
@@ -263,4 +263,87 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
     }
     state.expr = Some(Box::new(raw_expr));
     Ok(state)
+}
+
+mod tests {
+    use super::*;
+    use anyhow::{bail, Result, Error};
+    use crate::lib::{scanning::scan, lox::AstPrinter};
+
+    /// A utility to build statements and compare to the expected
+    /// statements.
+    #[derive(Debug)]
+    struct ParseTest {
+        expected: Vec<Stmt>,
+        result: Vec<Stmt>,
+    }
+
+    impl ParseTest {
+        fn from_tokens(tokens: &[Token], expected: Vec<Stmt>) -> Result<Self> {
+            let result = match parse(tokens) {
+                Ok(r) => r,
+                Err(why) => bail!(why),
+            };
+            Ok(Self { expected, result })
+        }
+
+        fn from_source(source: &str, expected: Vec<Stmt>) -> Result<Self> {
+            let tokens = scan(source)?;
+            match Self::from_tokens(&tokens, expected) {
+                Ok(e) => Ok(e),
+                Err(why) => bail!(why),
+            }
+        }
+
+        fn assert_eq(self) -> Result<(), Error> {
+            let mut printer = AstPrinter {};
+            
+            let result_strings = self.result
+                .into_iter()
+                .filter_map(|s| s.accept(&mut printer).ok())
+                .collect::<Vec<String>>();
+            
+            let expected_strings = self.expected
+                .into_iter()
+                .filter_map(|s| s.accept(&mut printer).ok())
+                .collect::<Vec<String>>();
+
+            assert_eq!(expected_strings, result_strings);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_parse_numeric_binary() -> Result<()> {
+        let source = "1 + 1;";
+        let expected = vec![
+            Stmt::Expression(Box::new(
+                Expr::Binary(
+                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+                    Token { token_type: TokenType::Plus, lexeme: "+".to_owned(), line: 1, line_pos: 3 },
+                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+                )
+            ))
+        ];
+        ParseTest::from_source(source, expected)?
+            .assert_eq()
+    }
+
+    #[test]
+    fn test_parse_invalid_numbers() -> Result<()> {
+        match ParseTest::from_source("1 1;", vec![]) {
+            Err(_) => Ok(()),
+            Ok(test) => {
+                bail!("Invalid expression was parsed! {:#?}", test);
+            }
+        }
+    }
+
+    #[test]
+    fn test_parse_semicolon_required() -> Result<()> {
+        match ParseTest::from_source("1 + 1", vec![]) {
+            Err(_) => Ok(()),
+            Ok(r) => bail!("Statement should not parse: {:?}", r),
+        }
+    }
 }

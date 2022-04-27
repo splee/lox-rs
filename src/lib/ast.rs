@@ -36,6 +36,7 @@ pub trait ExprVisitor<T> {
 }
 
 
+#[derive(Debug)]
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>)
