@@ -19,36 +19,38 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn current(&mut self) -> Result<&Token, LoxError> {
+    fn try_current(&mut self) -> Result<&Token, LoxError> {
+        match self.current() {
+            Some(t) => Ok(t),
+            None => Err(LoxError::Internal { message: "current should always be valid but is out of bounds".to_owned() })
+        }
+    }
+
+    fn current(&mut self) -> Option<&Token> {
         if self.is_consumed() {
-            Err(LoxError::Internal {
-                message: "current should always be valid but is out of bounds".to_owned(),
-            })
+            None
         } else {
-            Ok(&self.tokens[self.current_idx])
-        }
-    }
-
-    fn previous(&mut self) -> Result<&Token, LoxError> {
-        if self.current_idx > 0 {
-            Ok(&self.tokens[self.current_idx - 1])
-        } else {
-            Err(LoxError::Internal {
-                message: "previous should never be called without first calling advance".to_owned(),
-            })
-        }
-    }
-
-    fn peek(&mut self) -> Option<&Token> {
-        if self.is_peekable() {
             Some(&self.tokens[self.current_idx])
+        }
+    }
+
+    fn try_previous(&mut self) -> Result<&Token, LoxError> {
+        match self.previous() {
+            Some(t) => Ok(t),
+            None => Err(LoxError::Internal { message: "try_previous should never be called without first calling advance".to_owned() })
+        }
+    }
+
+    fn previous(&mut self) -> Option<&Token> {
+        if self.current_idx > 0 {
+            Some(&self.tokens[self.current_idx - 1])
         } else {
             None
         }
     }
 
     fn consume(&mut self, expected: &TokenType, message: &str) -> Result<(), LoxError> {
-        if let Some(t) = self.peek() {
+        if let Some(t) = self.current() {
             if expected.matches(&t.token_type) {
                 self.advance();
                 Ok(())
@@ -60,13 +62,7 @@ impl<'a> ParserState<'a> {
                 })
             }
         } else {
-            let t = {
-                if self.is_consumed() {
-                    self.previous()?
-                } else {
-                    self.current()?
-                }
-            };
+            let t = self.try_previous()?;
             Err(LoxError::Parse {
                 line: t.line,
                 lexeme: t.lexeme.to_string(),
@@ -84,16 +80,12 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn is_peekable(&mut self) -> bool {
-        !self.is_consumed()
-    }
-
     fn is_consumed(&mut self) -> bool {
         self.current_idx >= self.tokens.len()
     }
 
     fn match_advance(&mut self, expected: TokenType) -> bool {
-        if let Some(t) = self.peek() {
+        if let Some(t) = self.current() {
             if expected.matches(&t.token_type) {
                 self.advance();
                 return true;
@@ -136,7 +128,7 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, LoxError> {
 }
 
 fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
-   let t = state.current()?;
+   let t = state.try_current()?;
    let is_print = matches!(&t.token_type, TokenType::Print);
    if is_print {
        // Skip the print token itself and parse the remainder of the tokens.
@@ -161,7 +153,7 @@ fn equality(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = comparison(state)?;
     let mut expr = state.take_expr()?;
     while state.match_advance2(TokenType::BangEqual, TokenType::EqualEqual) {
-        let operator = state.previous()?.clone();
+        let operator = state.try_previous()?.clone();
         state = comparison(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -180,7 +172,7 @@ fn comparison(mut state: ParserState) -> Result<ParserState, LoxError> {
         TokenType::Less,
         TokenType::LessEqual,
     ) {
-        let operator = state.previous()?.clone();
+        let operator = state.try_previous()?.clone();
         state = term(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -194,7 +186,7 @@ fn term(mut state: ParserState) -> Result<ParserState, LoxError> {
     let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Minus, TokenType::Plus) {
-        let operator = state.previous()?.clone();
+        let operator = state.try_previous()?.clone();
         state = factor(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -208,7 +200,7 @@ fn factor(mut state: ParserState) -> Result<ParserState, LoxError> {
     let mut expr = state.take_expr()?;
 
     while state.match_advance2(TokenType::Slash, TokenType::Star) {
-        let operator = state.previous()?.clone();
+        let operator = state.try_previous()?.clone();
         state = unary(state)?;
         let right = state.take_expr()?;
         expr = Box::new(Expr::Binary(expr, operator, right));
@@ -219,7 +211,7 @@ fn factor(mut state: ParserState) -> Result<ParserState, LoxError> {
 
 fn unary(mut state: ParserState) -> Result<ParserState, LoxError> {
     if state.match_advance2(TokenType::Bang, TokenType::Minus) {
-        let operator = state.previous()?.clone();
+        let operator = state.try_previous()?.clone();
         state = unary(state)?;
         let right = state.take_expr()?;
         let expr = Box::new(Expr::Unary(operator, right));
@@ -231,7 +223,7 @@ fn unary(mut state: ParserState) -> Result<ParserState, LoxError> {
 }
 
 fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
-    let t = state.current()?;
+    let t = state.try_current()?;
     let should_advance = !matches!(&t.token_type, TokenType::LeftParen);
     let raw_expr = match &t.token_type {
         TokenType::False => Expr::Literal(LiteralValue::Boolean(false)),
