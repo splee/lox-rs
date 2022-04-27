@@ -22,7 +22,7 @@ impl<'a> ParserState<'a> {
     fn try_current(&mut self) -> Result<&Token, LoxError> {
         match self.current() {
             Some(t) => Ok(t),
-            None => Err(LoxError::Internal { message: "current should always be valid but is out of bounds".to_owned() })
+            None => Err(LoxError::Internal { message: "try_current should always be valid but is out of bounds".to_owned() })
         }
     }
 
