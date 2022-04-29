@@ -265,12 +265,14 @@ mod tests {
     /// A utility to build statements and compare to the expected
     /// statements.
     #[derive(Debug)]
+    #[allow(dead_code)]
     struct ParseTest {
         expected: Vec<Stmt>,
         result: Vec<Stmt>,
     }
 
     impl ParseTest {
+        #[allow(dead_code)]
         fn from_tokens(tokens: &[Token], expected: Vec<Stmt>) -> Result<Self> {
             let result = match parse(tokens) {
                 Ok(r) => r,
@@ -279,6 +281,7 @@ mod tests {
             Ok(Self { expected, result })
         }
 
+        #[allow(dead_code)]
         fn from_source(source: &str, expected: Vec<Stmt>) -> Result<Self> {
             let tokens = scan(source).unwrap();
             match Self::from_tokens(&tokens, expected) {
@@ -287,6 +290,7 @@ mod tests {
             }
         }
 
+        #[allow(dead_code)]
         fn assert_eq(self) -> Result<(), Error> {
             let mut printer = AstPrinter {};
             
