@@ -1,6 +1,6 @@
 use crate::lib::ast::{Expr, LiteralValue, Stmt};
-use crate::lib::scanner::{Token, TokenType};
 use crate::lib::err::LoxError;
+use crate::lib::scanner::{Token, TokenType};
 
 struct ParserState<'a> {
     tokens: &'a [Token],
@@ -22,7 +22,9 @@ impl<'a> ParserState<'a> {
     fn try_current(&mut self) -> Result<&Token, LoxError> {
         match self.current() {
             Some(t) => Ok(t),
-            None => Err(LoxError::Internal { message: "try_current should always be valid but is out of bounds".to_owned() })
+            None => Err(LoxError::Internal {
+                message: "try_current should always be valid but is out of bounds".to_owned(),
+            }),
         }
     }
 
@@ -37,7 +39,10 @@ impl<'a> ParserState<'a> {
     fn try_previous(&mut self) -> Result<&Token, LoxError> {
         match self.previous() {
             Some(t) => Ok(t),
-            None => Err(LoxError::Internal { message: "try_previous should never be called without first calling advance".to_owned() })
+            None => Err(LoxError::Internal {
+                message: "try_previous should never be called without first calling advance"
+                    .to_owned(),
+            }),
         }
     }
 
@@ -128,21 +133,21 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, LoxError> {
 }
 
 fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
-   let t = state.try_current()?;
-   let is_print = matches!(&t.token_type, TokenType::Print);
-   if is_print {
-       // Skip the print token itself and parse the remainder of the tokens.
-       state.advance();
-   }
-   let mut state = expression(state)?;
-   let expr = state.take_expr()?;
-   let stmt = match is_print {
-       true => Stmt::Print(expr),
-       false => Stmt::Expression(expr)
-   };
-   state.consume(&TokenType::Semicolon, "Expect ';' after statement")?;
-   state.stmts.push(stmt);
-   Ok(state)
+    let t = state.try_current()?;
+    let is_print = matches!(&t.token_type, TokenType::Print);
+    if is_print {
+        // Skip the print token itself and parse the remainder of the tokens.
+        state.advance();
+    }
+    let mut state = expression(state)?;
+    let expr = state.take_expr()?;
+    let stmt = match is_print {
+        true => Stmt::Print(expr),
+        false => Stmt::Expression(expr),
+    };
+    state.consume(&TokenType::Semicolon, "Expect ';' after statement")?;
+    state.stmts.push(stmt);
+    Ok(state)
 }
 
 fn expression(state: ParserState) -> Result<ParserState, LoxError> {
@@ -230,16 +235,14 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
         TokenType::True => Expr::Literal(LiteralValue::Boolean(true)),
         TokenType::Nil => Expr::Literal(LiteralValue::Nil),
         TokenType::Str => Expr::Literal(LiteralValue::String(t.lexeme.clone())),
-        TokenType::Numeric => {
-            match t.lexeme.parse::<f64>() {
-                Ok(num) => Expr::Literal(LiteralValue::Number(num)),
-                Err(why) => {
-                    return Err(LoxError::Parse {
-                        line:t.line,
-                        lexeme: t.lexeme.to_string(),
-                        message: format!("Failed to parse numeric: {:#}", why)
-                    });
-                }
+        TokenType::Numeric => match t.lexeme.parse::<f64>() {
+            Ok(num) => Expr::Literal(LiteralValue::Number(num)),
+            Err(why) => {
+                return Err(LoxError::Parse {
+                    line: t.line,
+                    lexeme: t.lexeme.to_string(),
+                    message: format!("Failed to parse numeric: {:#}", why),
+                });
             }
         },
         TokenType::LeftParen => {
@@ -247,8 +250,12 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
             state = expression(state)?;
             state.consume(&TokenType::RightParen, "Expect ')' after expression")?;
             Expr::Grouping(state.take_expr()?)
-        },
-        _ => return Err(LoxError::Internal { message: format!("primary statement not found: {:?}", t)})
+        }
+        _ => {
+            return Err(LoxError::Internal {
+                message: format!("primary statement not found: {:?}", t),
+            })
+        }
     };
     if should_advance {
         state.advance();
@@ -259,8 +266,8 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
 
 mod tests {
     use super::*;
-    use anyhow::{bail, Result, Error};
-    use crate::lib::{scanner::scan, lox::AstPrinter};
+    use crate::lib::{lox::AstPrinter, scanner::scan};
+    use anyhow::{bail, Error, Result};
 
     /// A utility to build statements and compare to the expected
     /// statements.
@@ -293,13 +300,15 @@ mod tests {
         #[allow(dead_code)]
         fn assert_eq(self) -> Result<(), Error> {
             let mut printer = AstPrinter {};
-            
-            let result_strings = self.result
+
+            let result_strings = self
+                .result
                 .into_iter()
                 .filter_map(|s| s.accept(&mut printer).ok())
                 .collect::<Vec<String>>();
-            
-            let expected_strings = self.expected
+
+            let expected_strings = self
+                .expected
                 .into_iter()
                 .filter_map(|s| s.accept(&mut printer).ok())
                 .collect::<Vec<String>>();
@@ -312,17 +321,17 @@ mod tests {
     #[test]
     fn test_parse_numeric_binary() -> Result<()> {
         let source = "1 + 1;";
-        let expected = vec![
-            Stmt::Expression(Box::new(
-                Expr::Binary(
-                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
-                    Token { token_type: TokenType::Plus, lexeme: "+".to_owned(), line: 1, line_pos: 3 },
-                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
-                )
-            ))
-        ];
-        ParseTest::from_source(source, expected)?
-            .assert_eq()
+        let expected = vec![Stmt::Expression(Box::new(Expr::Binary(
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+            Token {
+                token_type: TokenType::Plus,
+                lexeme: "+".to_owned(),
+                line: 1,
+                line_pos: 3,
+            },
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+        )))];
+        ParseTest::from_source(source, expected)?.assert_eq()
     }
 
     #[test]

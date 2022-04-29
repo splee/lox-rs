@@ -1,8 +1,8 @@
 use crate::lib::{
     ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
     err::LoxError,
-    scanner::{Token, TokenType},
     object::Object,
+    scanner::{Token, TokenType},
 };
 use std::io::Write;
 
@@ -11,7 +11,6 @@ pub struct Interpreter<W: Write> {
 }
 
 impl<W: Write> Interpreter<W> {
-
     pub fn new(out: W) -> Self {
         Interpreter { out }
     }
@@ -31,13 +30,14 @@ impl<W: Write> Interpreter<W> {
     fn write(&mut self, value: &str) -> Result<(), LoxError> {
         match write!(self.out, "{}\n", value) {
             Ok(_) => Ok(()),
-            Err(why) => Err(LoxError::Internal { message: format!("Failed to write to output: {:#?}", why) }),
+            Err(why) => Err(LoxError::Internal {
+                message: format!("Failed to write to output: {:#?}", why),
+            }),
         }
     }
 }
 
 impl<W: Write> ExprVisitor<Object> for Interpreter<W> {
-
     fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<Object, LoxError> {
         match value {
             LiteralValue::Boolean(v) => Ok(Object::Boolean(*v)),
@@ -57,45 +57,41 @@ impl<W: Write> ExprVisitor<Object> for Interpreter<W> {
         let right_eval = self.evaluate(right)?;
 
         let object = match (&left_eval, &right_eval) {
-            (Object::Number(l), Object::Number(r)) => {
-                match &op.token_type {
-                    TokenType::Plus => Object::Number(l + r),
-                    TokenType::Minus => Object::Number(l - r),
-                    TokenType::Slash => Object::Number(l / r),
-                    TokenType::Star => Object::Number(l * r),
-                    TokenType::Greater => Object::Boolean(l > r),
-                    TokenType::GreaterEqual => Object::Boolean(l >= r),
-                    TokenType::Less => Object::Boolean(l < r),
-                    TokenType::LessEqual => Object::Boolean(l <= r),
-                    TokenType::EqualEqual => Object::Boolean((l - r).abs() < f64::EPSILON),
-                    TokenType::BangEqual => Object::Boolean((l - r).abs() > f64::EPSILON),
-                    _ => return unsupported_operation_error("numeric", op),
-                }
+            (Object::Number(l), Object::Number(r)) => match &op.token_type {
+                TokenType::Plus => Object::Number(l + r),
+                TokenType::Minus => Object::Number(l - r),
+                TokenType::Slash => Object::Number(l / r),
+                TokenType::Star => Object::Number(l * r),
+                TokenType::Greater => Object::Boolean(l > r),
+                TokenType::GreaterEqual => Object::Boolean(l >= r),
+                TokenType::Less => Object::Boolean(l < r),
+                TokenType::LessEqual => Object::Boolean(l <= r),
+                TokenType::EqualEqual => Object::Boolean((l - r).abs() < f64::EPSILON),
+                TokenType::BangEqual => Object::Boolean((l - r).abs() > f64::EPSILON),
+                _ => return unsupported_operation_error("numeric", op),
             },
-            (Object::String(l), Object::String(r)) => {
-                match &op.token_type {
-                    TokenType::Plus => Object::String(format!("{}{}", l, r)),
-                    TokenType::EqualEqual => Object::Boolean(l.eq(r)),
-                    TokenType::BangEqual => Object::Boolean(!l.eq(r)),
-                    _ => return unsupported_operation_error("string", op),
-                }
+            (Object::String(l), Object::String(r)) => match &op.token_type {
+                TokenType::Plus => Object::String(format!("{}{}", l, r)),
+                TokenType::EqualEqual => Object::Boolean(l.eq(r)),
+                TokenType::BangEqual => Object::Boolean(!l.eq(r)),
+                _ => return unsupported_operation_error("string", op),
             },
             (Object::Nil, Object::Nil) => {
                 match &op.token_type {
                     TokenType::EqualEqual => Object::Boolean(true),
                     TokenType::BangEqual => Object::Boolean(false),
                     // (nil + nil) == (nil - nil) == (nil / nil) == (nil * nil) = true
-                    TokenType::Plus | TokenType::Minus | TokenType::Slash | TokenType::Star => Object::Nil,
+                    TokenType::Plus | TokenType::Minus | TokenType::Slash | TokenType::Star => {
+                        Object::Nil
+                    }
                     _ => return unsupported_operation_error("nil", op),
                 }
             }
-            (Object::Boolean(l), Object::Boolean(r)) => {
-                match &op.token_type {
-                    TokenType::EqualEqual => Object::Boolean(l == r),
-                    TokenType::BangEqual => Object::Boolean(l != r),
-                    _ => return unsupported_operation_error("boolean", op),
-                }
-            }
+            (Object::Boolean(l), Object::Boolean(r)) => match &op.token_type {
+                TokenType::EqualEqual => Object::Boolean(l == r),
+                TokenType::BangEqual => Object::Boolean(l != r),
+                _ => return unsupported_operation_error("boolean", op),
+            },
             // Not sure if gross or elegant...
             (_, _) => return unsupported_operation_error("supplied combination of", op),
         };

@@ -2,7 +2,7 @@ use crate::lib::err::LoxError;
 use phf::phf_map;
 use std::iter::Peekable;
 use std::str::Chars;
-use tracing::{debug, error, info, warn, instrument};
+use tracing::{debug, error, info, instrument, warn};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
@@ -61,7 +61,6 @@ pub enum TokenType {
 }
 
 impl TokenType {
-
     pub fn matches(&self, t: &TokenType) -> bool {
         let pair = (self, t);
         matches!(pair, (this, that) if this == that)
@@ -129,9 +128,7 @@ impl<'a> Scanner<'a> {
 
     fn peek_match(&mut self, val: char) -> bool {
         match self.chars.peek() {
-            Some(v) => {
-                val == *v
-            }
+            Some(v) => val == *v,
             None => false,
         }
     }
@@ -140,11 +137,13 @@ impl<'a> Scanner<'a> {
     fn scan_next(&mut self) -> Result<(), LoxError> {
         let c = match self.advance() {
             Some(v) => v,
-            None => return Err(LoxError::Syntax {
-                line: self.line,
-                line_pos: self.line_pos,
-                message: "Source is fully consumed; expected more input.".to_owned(),
-            }),
+            None => {
+                return Err(LoxError::Syntax {
+                    line: self.line,
+                    line_pos: self.line_pos,
+                    message: "Source is fully consumed; expected more input.".to_owned(),
+                })
+            }
         };
         // collect metadata about our position in the source script.
         let line = self.line;
@@ -214,8 +213,17 @@ impl<'a> Scanner<'a> {
                     // Strings and chars and byte-buffers, oh my!
                     let mut b = [0; 4];
                     let charstr = c.encode_utf8(&mut b);
-                    error!(character = charstr, line_pos = line_pos, line = line, "Unknown Token");
-                    return Err(LoxError::Syntax { line, line_pos, message: format!("Unknown token: {}", c) });
+                    error!(
+                        character = charstr,
+                        line_pos = line_pos,
+                        line = line,
+                        "Unknown Token"
+                    );
+                    return Err(LoxError::Syntax {
+                        line,
+                        line_pos,
+                        message: format!("Unknown token: {}", c),
+                    });
                 }
             }
         };
@@ -297,7 +305,13 @@ impl<'a> Scanner<'a> {
         // Ensure we have a valid number
         let _: f64 = match str_val.parse::<f64>() {
             Ok(v) => v,
-            Err(why) => return Err(LoxError::Syntax { line: self.line, line_pos: self.line_pos, message: format!("Failed to parse numeric: {:#?}", why) }),
+            Err(why) => {
+                return Err(LoxError::Syntax {
+                    line: self.line,
+                    line_pos: self.line_pos,
+                    message: format!("Failed to parse numeric: {:#?}", why),
+                })
+            }
         };
         Ok(str_val)
     }
@@ -321,7 +335,7 @@ pub fn scan(source: &str) -> Result<Vec<Token>, LoxError> {
     let mut scanner = Scanner::new(source);
     while let Ok(()) = scanner.scan_next() {
         // just consume the whole thing
-        continue
+        continue;
     }
     info!("Finished scanning tokens");
     // Do the final whitespace filtering
@@ -365,7 +379,8 @@ mod tests {
 
     #[test]
     fn test_keywords_are_identified() -> Result<()> {
-        let keyword_soup = KEYWORDS.keys()
+        let keyword_soup = KEYWORDS
+            .keys()
             .map(|k| &**k)
             .collect::<Vec<&str>>()
             .join(" ");
@@ -378,7 +393,10 @@ mod tests {
         for t in tokens {
             let expected = match KEYWORDS.get(&t.lexeme) {
                 Some(t) => t,
-                None => bail!("Unable to find expected token type for keyword '{}'", t.lexeme),
+                None => bail!(
+                    "Unable to find expected token type for keyword '{}'",
+                    t.lexeme
+                ),
             };
             assert_eq!(&t.token_type, expected);
         }
@@ -408,11 +426,12 @@ mod tests {
             ("<", &TokenType::Less),
             ("<=", &TokenType::LessEqual),
         ];
-        let token_soup = &token_types.into_iter()
+        let token_soup = &token_types
+            .into_iter()
             .map(|(l, _t)| l)
             .collect::<Vec<&str>>()
             .join(" ");
-        
+
         let tokens = match scan(&token_soup) {
             Ok(v) => v,
             Err(why) => bail!(why),
@@ -448,7 +467,7 @@ mod tests {
         assert_eq!(&t.lexeme, "This is a string.");
         Ok(())
     }
-     
+
     #[test]
     fn test_numerics() -> Result<()> {
         let nums = ["12345", "123.45"];
@@ -488,7 +507,7 @@ mod tests {
         for (lexeme, ttype) in expected {
             let t = match tokens.get(i) {
                 Some(t) => t,
-                None => bail!("Failed to find expected token at idx {}", i)
+                None => bail!("Failed to find expected token at idx {}", i),
             };
             assert_eq!(&t.lexeme, lexeme);
             assert_eq!(&t.token_type, ttype);

@@ -1,5 +1,5 @@
-use crate::lib::scanner::Token;
 use crate::lib::err::LoxError;
+use crate::lib::scanner::Token;
 
 #[derive(Debug, Clone)]
 pub enum Expr {
@@ -29,17 +29,21 @@ impl Expr {
 }
 
 pub trait ExprVisitor<T> {
-    fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<T, LoxError>;
+    fn visit_binary_expr(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+    ) -> Result<T, LoxError>;
     fn visit_grouping_expr(&mut self, expression: &Expr) -> Result<T, LoxError>;
     fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<T, LoxError>;
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Result<T, LoxError>;
 }
 
-
 #[derive(Debug)]
 pub enum Stmt {
     Expression(Box<Expr>),
-    Print(Box<Expr>)
+    Print(Box<Expr>),
 }
 
 impl Stmt {

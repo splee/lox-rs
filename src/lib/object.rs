@@ -19,7 +19,7 @@ impl fmt::Display for Object {
                 } else {
                     write!(f, "{:.0}", v)
                 }
-            },
+            }
             Object::String(v) => write!(f, "{}", v),
         }
     }

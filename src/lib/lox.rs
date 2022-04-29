@@ -1,7 +1,7 @@
 use crate::lib::{
     ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
-    scanner::Token,
     err::LoxError,
+    scanner::Token,
 };
 
 pub struct AstPrinter;
@@ -13,9 +13,18 @@ impl AstPrinter {
 }
 
 impl ExprVisitor<String> for AstPrinter {
-
-    fn visit_binary_expr(&mut self, left: &Expr, operator: &Token, right: &Expr) -> Result<String, LoxError> {
-        Ok(format!("({:?} {} {})", operator, left.accept(self)?, right.accept(self)?))
+    fn visit_binary_expr(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+    ) -> Result<String, LoxError> {
+        Ok(format!(
+            "({:?} {} {})",
+            operator,
+            left.accept(self)?,
+            right.accept(self)?
+        ))
     }
 
     fn visit_grouping_expr(&mut self, expression: &Expr) -> Result<String, LoxError> {
@@ -38,7 +47,6 @@ impl ExprVisitor<String> for AstPrinter {
 }
 
 impl StmtVisitor<String> for AstPrinter {
-
     fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<String, LoxError> {
         Ok(format!("(stmt {})", expression.accept(self)?))
     }

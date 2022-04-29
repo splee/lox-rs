@@ -1,13 +1,10 @@
-use thiserror::Error;
 use crate::lib::scanner::Token;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum LoxError {
     #[error("Runtime error at {at:?}: {message}")]
-    Runtime {
-        message: String,
-        at: Token,
-    },
+    Runtime { message: String, at: Token },
 
     #[error("Parse error on line {line} at '{lexeme}': {message}")]
     Parse {
@@ -24,7 +21,5 @@ pub enum LoxError {
     },
 
     #[error("Internal error: {message}")]
-    Internal {
-        message: String,
-    },
+    Internal { message: String },
 }

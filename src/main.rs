@@ -1,14 +1,14 @@
 mod lib;
 use anyhow::{bail, Result};
-use std::path::PathBuf;
-use std::io::{BufRead, Write};
-use std::io;
 use clap::Parser as ClapParser;
+use lib::interpreter::Interpreter;
 use lib::lox::AstPrinter;
 use lib::parser::parse;
 use lib::scanner::scan;
-use lib::interpreter::Interpreter;
-use tracing::{debug, error, info, warn, instrument};
+use std::io;
+use std::io::{BufRead, Write};
+use std::path::PathBuf;
+use tracing::{debug, error, info, instrument, warn};
 use tracing_subscriber::filter::EnvFilter;
 
 #[derive(ClapParser, Debug)]
@@ -24,11 +24,12 @@ fn setup_tracing() -> Result<()> {
         .pretty()
         .with_writer(io::stderr)
         .with_env_filter(filter)
-        .try_init() {
-            bail!(why)
-        } else {
-            Ok(())
-        }
+        .try_init()
+    {
+        bail!(why)
+    } else {
+        Ok(())
+    }
 }
 
 #[instrument]
@@ -41,7 +42,7 @@ fn main() -> Result<()> {
             error!("Failed to execute file - {}", why);
             bail!(why)
         }
-        return Ok(())
+        return Ok(());
     }
 
     // If we got here, we're in prompt mode.
@@ -52,7 +53,7 @@ fn main() -> Result<()> {
         Err(why) => {
             error!("Error running interactive interpreter: {}", why);
             bail!(why)
-        },
+        }
     }
 }
 
@@ -68,7 +69,7 @@ fn run_file(path: PathBuf, print_ast: bool) -> Result<()> {
         Ok(c) => {
             let _ = run(c, print_ast)?;
             Ok(())
-        },
+        }
         Err(_) => bail!("Failed to decode unicode."),
     }
 }
@@ -78,10 +79,16 @@ fn print_prompt() -> Result<()> {
     let mut handle = stdout.lock();
     // TODO: Why do std::io::Error not count for anyhow::Error!?
     if let Err(why) = handle.write(b"\n>> ") {
-        bail!("Failed to write prompt to console.\n\nCaused by:\n{:#?}", why);
+        bail!(
+            "Failed to write prompt to console.\n\nCaused by:\n{:#?}",
+            why
+        );
     }
     if let Err(why) = handle.flush() {
-        bail!("Failed to flush prompt to console.\n\nCaused by:\n{:#?}", why);
+        bail!(
+            "Failed to flush prompt to console.\n\nCaused by:\n{:#?}",
+            why
+        );
     }
     Ok(())
 }
@@ -114,7 +121,7 @@ fn run(script: &str, print_ast: bool) -> Result<()> {
         Err(why) => {
             error!("Failed to parse statements: {}", why);
             bail!(why);
-        },
+        }
     };
 
     if print_ast {
@@ -122,7 +129,7 @@ fn run(script: &str, print_ast: bool) -> Result<()> {
         for stmt in &statements {
             let expr_string = match printer.print(stmt) {
                 Ok(v) => v,
-                Err(why) => bail!(why)
+                Err(why) => bail!(why),
             };
             println!("{}", expr_string);
         }
