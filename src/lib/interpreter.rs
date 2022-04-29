@@ -171,7 +171,7 @@ mod tests {
     }
 
     fn _parse_statements(src: &str) -> Result<Vec<Stmt>> {
-        let tokens = scan(src)?;
+        let tokens = scan(src).unwrap();
         match parse(&tokens) {
             Ok(v) => Ok(v),
             Err(why) => bail!(why),

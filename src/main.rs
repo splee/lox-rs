@@ -103,7 +103,10 @@ fn run_prompt(print_ast: bool) -> Result<()> {
 
 #[instrument(skip(script))]
 fn run(script: &str, print_ast: bool) -> Result<()> {
-    let tokens = scan(script)?;
+    let tokens = match scan(script) {
+        Ok(v) => v,
+        Err(why) => bail!("Failed to scan source: {}", why),
+    };
     debug!(tokens = tokens.len(), "Tokens scanned successfully.");
 
     let statements = match parse(&tokens) {

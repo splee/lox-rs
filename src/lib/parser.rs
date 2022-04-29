@@ -280,7 +280,7 @@ mod tests {
         }
 
         fn from_source(source: &str, expected: Vec<Stmt>) -> Result<Self> {
-            let tokens = scan(source)?;
+            let tokens = scan(source).unwrap();
             match Self::from_tokens(&tokens, expected) {
                 Ok(e) => Ok(e),
                 Err(why) => bail!(why),

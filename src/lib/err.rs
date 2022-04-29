@@ -16,6 +16,13 @@ pub enum LoxError {
         message: String,
     },
 
+    #[error("Syntax error on line {line} at position {line_pos}: {message}")]
+    Syntax {
+        line: usize,
+        line_pos: usize,
+        message: String,
+    },
+
     #[error("Internal error: {message}")]
     Internal {
         message: String,

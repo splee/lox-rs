@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use crate::lib::err::LoxError;
 use phf::phf_map;
 use std::iter::Peekable;
 use std::str::Chars;
@@ -116,14 +116,14 @@ impl<'a> Scanner<'a> {
         }
     }
 
-    fn advance(&mut self) -> Result<char> {
+    fn advance(&mut self) -> Option<char> {
         match self.chars.next() {
             Some(v) => {
                 self.current += 1;
                 self.line_pos += 1;
-                Ok(v)
+                Some(v)
             }
-            None => bail!("Source consumed."),
+            None => None,
         }
     }
 
@@ -137,8 +137,15 @@ impl<'a> Scanner<'a> {
     }
 
     #[instrument(skip(self))]
-    fn scan_next(&mut self) -> Result<()> {
-        let c = self.advance()?;
+    fn scan_next(&mut self) -> Result<(), LoxError> {
+        let c = match self.advance() {
+            Some(v) => v,
+            None => return Err(LoxError::Syntax {
+                line: self.line,
+                line_pos: self.line_pos,
+                message: "Source is fully consumed; expected more input.".to_owned(),
+            }),
+        };
         // collect metadata about our position in the source script.
         let line = self.line;
         let line_pos = self.line_pos;
@@ -208,7 +215,7 @@ impl<'a> Scanner<'a> {
                     let mut b = [0; 4];
                     let charstr = c.encode_utf8(&mut b);
                     error!(character = charstr, line_pos = line_pos, line = line, "Unknown Token");
-                    bail!("Unknown Token: {}", c);
+                    return Err(LoxError::Syntax { line, line_pos, message: format!("Unknown token: {}", c) });
                 }
             }
         };
@@ -218,10 +225,11 @@ impl<'a> Scanner<'a> {
                 TokenType::Comment => self.consume_comment()?,
                 TokenType::IdentifierOrKeyword => self.consume_identifier_or_keyword(c)?,
                 TokenType::Numeric => self.consume_numeric(c)?,
+                // Unwrap should not fail as it has been peek()'d.
                 TokenType::BangEqual
                 | TokenType::EqualEqual
                 | TokenType::LessEqual
-                | TokenType::GreaterEqual => String::from_iter(vec![c, self.advance()?]),
+                | TokenType::GreaterEqual => String::from_iter(vec![c, self.advance().unwrap()]),
                 _ => String::from(c),
             }
         };
@@ -244,20 +252,21 @@ impl<'a> Scanner<'a> {
         Ok(())
     }
 
-    fn consume_until(&mut self, breaker: char) -> Result<String> {
+    fn consume_until(&mut self, breaker: char) -> Result<String, LoxError> {
         let mut content: Vec<char> = Vec::new();
         while let Some(v) = self.chars.peek() {
             if *v == breaker {
                 break;
             }
-            content.push(self.advance()?);
+            // Should not fail, guarded by peek()
+            content.push(self.advance().unwrap());
         }
         Ok(String::from_iter(content))
     }
 
-    fn consume_comment(&mut self) -> Result<String> {
+    fn consume_comment(&mut self) -> Result<String, LoxError> {
         // Skip the second slash
-        self.advance()?;
+        let _ = self.advance();
         // Consume the rest of the line.
         let content = self.consume_until('\n')?;
         // Update line specific info
@@ -266,19 +275,20 @@ impl<'a> Scanner<'a> {
         Ok(content)
     }
 
-    fn consume_string(&mut self) -> Result<String> {
+    fn consume_string(&mut self) -> Result<String, LoxError> {
         let content = self.consume_until('"')?;
         // Also consume the closing double-quote
-        let _ = self.advance()?;
+        let _ = self.advance();
         Ok(content)
     }
 
-    fn consume_numeric(&mut self, first_char: char) -> Result<String> {
+    fn consume_numeric(&mut self, first_char: char) -> Result<String, LoxError> {
         let mut content: Vec<char> = vec![first_char];
         while let Some(vref) = self.chars.peek() {
             let v = *vref;
             if is_numeric(v) || v == '.' {
-                content.push(self.advance()?);
+                // As chars.peek() gave a result, this should not fail.
+                content.push(self.advance().unwrap());
             } else {
                 break;
             }
@@ -287,17 +297,17 @@ impl<'a> Scanner<'a> {
         // Ensure we have a valid number
         let _: f64 = match str_val.parse::<f64>() {
             Ok(v) => v,
-            Err(why) => bail!("Failed to parse numeric: {:#?}", why),
+            Err(why) => return Err(LoxError::Syntax { line: self.line, line_pos: self.line_pos, message: format!("Failed to parse numeric: {:#?}", why) }),
         };
         Ok(str_val)
     }
 
-    fn consume_identifier_or_keyword(&mut self, first_char: char) -> Result<String> {
+    fn consume_identifier_or_keyword(&mut self, first_char: char) -> Result<String, LoxError> {
         let mut content: Vec<char> = vec![first_char];
         while let Some(vref) = self.chars.peek() {
             let v = *vref;
             if is_alpha_numeric(v) || v == '.' {
-                content.push(self.advance()?);
+                content.push(self.advance().unwrap());
             } else {
                 break;
             }
@@ -307,7 +317,7 @@ impl<'a> Scanner<'a> {
 }
 
 #[instrument(skip(source))]
-pub fn scan(source: &str) -> Result<Vec<Token>> {
+pub fn scan(source: &str) -> Result<Vec<Token>, LoxError> {
     let mut scanner = Scanner::new(source);
     while let Ok(()) = scanner.scan_next() {
         // just consume the whole thing
@@ -340,11 +350,15 @@ fn is_alpha_numeric(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use anyhow::{bail, Result};
 
     #[test]
     fn test_whitespace_is_filtered() -> Result<()> {
         let src = "\r\t ";
-        let tokens = scan(src)?;
+        let tokens = match scan(src) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
         assert_eq!(tokens.len(), 0);
         Ok(())
     }
@@ -355,7 +369,11 @@ mod tests {
             .map(|k| &**k)
             .collect::<Vec<&str>>()
             .join(" ");
-        let tokens = scan(&keyword_soup)?;
+
+        let tokens = match scan(&keyword_soup) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
         assert_eq!(tokens.len(), KEYWORDS.len());
         for t in tokens {
             let expected = match KEYWORDS.get(&t.lexeme) {
@@ -395,7 +413,10 @@ mod tests {
             .collect::<Vec<&str>>()
             .join(" ");
         
-        let tokens = scan(&token_soup)?;
+        let tokens = match scan(&token_soup) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
 
         // TODO: Figure out enumerate for iterators of tuples.
         let mut i: usize = 0;
@@ -415,7 +436,10 @@ mod tests {
     #[test]
     fn test_str() -> Result<()> {
         let str_str = "\"This is a string.\"";
-        let tokens = scan(str_str)?;
+        let tokens = match scan(str_str) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
         let t = match tokens.first() {
             Some(t) => t,
             None => bail!("No tokens returned!"),
@@ -429,7 +453,10 @@ mod tests {
     fn test_numerics() -> Result<()> {
         let nums = ["12345", "123.45"];
         let num_str = nums.join(" ");
-        let tokens = scan(&num_str)?;
+        let tokens = match scan(&num_str) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
         let mut i = 0usize;
         for expected_num in nums {
             let t = match tokens.get(i) {
@@ -446,7 +473,10 @@ mod tests {
     #[test]
     fn test_comments() -> Result<()> {
         let mixed_str = "12345 // This is a test comment\n//Full line comment.";
-        let tokens = scan(mixed_str)?;
+        let tokens = match scan(mixed_str) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
         let expected = [
             ("12345", &TokenType::Numeric),
             // TODO: Should we be trimming the leading whitespace?
