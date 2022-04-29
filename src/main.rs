@@ -125,7 +125,7 @@ fn run(script: &str, print_ast: bool) -> Result<()> {
         }
     }
 
-    let mut interpreter = Interpreter {};
+    let mut interpreter = Interpreter::new(std::io::stdout());
     if let Err(why) = interpreter.interpret(&statements) {
         bail!(why)
     }

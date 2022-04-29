@@ -4,24 +4,39 @@ use crate::lib::{
     scanning::{Token, TokenType},
     object::Object,
 };
+use std::io::Write;
 
+pub struct Interpreter<W: Write> {
+    out: W,
+}
 
-pub struct Interpreter {}
+impl<W: Write> Interpreter<W> {
 
-impl Interpreter {
+    pub fn new(out: W) -> Self {
+        Interpreter { out }
+    }
+
     pub fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
         expression.accept(self)
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<Vec<Object>, LoxError> {
+        let mut objects: Vec<Object> = Vec::new();
         for stmt in statements {
-            stmt.accept(self)?;
+            objects.push(stmt.accept(self)?);
         }
-        Ok(())
+        Ok(objects)
+    }
+
+    fn write(&mut self, value: &str) -> Result<(), LoxError> {
+        match write!(self.out, "{}\n", value) {
+            Ok(_) => Ok(()),
+            Err(why) => Err(LoxError::Internal { message: format!("Failed to write to output: {:#?}", why) }),
+        }
     }
 }
 
-impl ExprVisitor<Object> for Interpreter {
+impl<W: Write> ExprVisitor<Object> for Interpreter<W> {
 
     fn visit_literal_expr(&mut self, value: &LiteralValue) -> Result<Object, LoxError> {
         match value {
@@ -117,16 +132,17 @@ impl ExprVisitor<Object> for Interpreter {
     }
 }
 
-impl StmtVisitor<()> for Interpreter {
-    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
-        self.evaluate(expression)?;
-        Ok(())
+impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
+    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<Object, LoxError> {
+        let value = self.evaluate(expression)?;
+        Ok(value)
     }
 
-    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
-        let value = self.evaluate(expression)?;
-        println!("{}", value);
-        Ok(())
+    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<Object, LoxError> {
+        let value = self.visit_expression_stmt(expression)?;
+        let stringified = format!("{}", value);
+        self.write(&stringified)?;
+        Ok(value)
     }
 }
 
@@ -135,4 +151,103 @@ fn unsupported_operation_error<T>(type_name: &str, op: &Token) -> Result<T, LoxE
         message: format!("Unsupported operation for {} types.", type_name),
         at: op.clone(),
     })
+}
+
+mod tests {
+    use crate::lib::{parser::parse, scanning::scan};
+
+    use super::*;
+    use anyhow::{bail, Result};
+    use std::io::stdout;
+
+    fn _interpret(statements: Vec<Stmt>) -> Result<Vec<Object>> {
+        let mut interpreter = Interpreter::new(stdout());
+
+        let objects = match interpreter.interpret(&statements) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
+        Ok(objects)
+    }
+
+    fn _parse_statements(src: &str) -> Result<Vec<Stmt>> {
+        let tokens = scan(src)?;
+        match parse(&tokens) {
+            Ok(v) => Ok(v),
+            Err(why) => bail!(why),
+        }
+    }
+
+    #[test]
+    fn test_small_print_script() -> Result<()> {
+        let src = r#"
+            print 150.6 * 2;
+            print "test" + "ing";
+            print 1 + 2;
+            print 1 == 0;
+        "#;
+        let statements = _parse_statements(src)?;
+
+        let mut mock_writer: Vec<u8> = Vec::new();
+        let mut interp = Interpreter::new(&mut mock_writer);
+        let objects = match interp.interpret(&statements) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
+
+        let expected_objects = vec![
+            Object::Number(150.6 * 2.0),
+            Object::String("testing".to_owned()),
+            Object::Number(3.0),
+            Object::Boolean(false),
+        ];
+
+        assert_eq!(objects.len(), expected_objects.len());
+
+        for (result, expected) in std::iter::zip(objects, expected_objects) {
+            assert_eq!(result, expected);
+        }
+
+        let expected_output = "301.2\ntesting\n3\nfalse\n";
+
+        assert_eq!(String::from_utf8(mock_writer).unwrap(), expected_output);
+        Ok(())
+    }
+
+    #[test]
+    fn test_small_script() -> Result<()> {
+        let src = r#"
+        150.6 * 2;
+        "test" + "ing";
+        1 + 2;
+        1 == 0;
+        "#;
+        let statements = _parse_statements(src)?;
+
+        let mut mock_writer: Vec<u8> = Vec::new();
+        let mut interp = Interpreter::new(&mut mock_writer);
+        let objects = match interp.interpret(&statements) {
+            Ok(v) => v,
+            Err(why) => bail!(why),
+        };
+
+        let expected_objects = vec![
+            Object::Number(150.6 * 2.0),
+            Object::String("testing".to_owned()),
+            Object::Number(3.0),
+            Object::Boolean(false),
+        ];
+
+        assert_eq!(objects.len(), expected_objects.len());
+
+        for (result, expected) in std::iter::zip(objects, expected_objects) {
+            assert_eq!(result, expected);
+        }
+
+        let expected_output = "";
+
+        assert_eq!(String::from_utf8(mock_writer).unwrap(), expected_output);
+
+        Ok(())
+    }
 }
