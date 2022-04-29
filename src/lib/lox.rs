@@ -1,6 +1,6 @@
 use crate::lib::{
     ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
-    scanning::Token,
+    scanner::Token,
     err::LoxError,
 };
 

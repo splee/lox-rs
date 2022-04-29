@@ -6,7 +6,7 @@ use std::io;
 use clap::Parser as ClapParser;
 use lib::lox::AstPrinter;
 use lib::parser::parse;
-use lib::scanning::scan;
+use lib::scanner::scan;
 use lib::interpreter::Interpreter;
 use tracing::{debug, error, info, warn, instrument};
 use tracing_subscriber::filter::EnvFilter;

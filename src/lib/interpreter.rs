@@ -1,7 +1,7 @@
 use crate::lib::{
     ast::{Expr, ExprVisitor, LiteralValue, Stmt, StmtVisitor},
     err::LoxError,
-    scanning::{Token, TokenType},
+    scanner::{Token, TokenType},
     object::Object,
 };
 use std::io::Write;
@@ -154,7 +154,7 @@ fn unsupported_operation_error<T>(type_name: &str, op: &Token) -> Result<T, LoxE
 }
 
 mod tests {
-    use crate::lib::{parser::parse, scanning::scan};
+    use crate::lib::{parser::parse, scanner::scan};
 
     use super::*;
     use anyhow::{bail, Result};

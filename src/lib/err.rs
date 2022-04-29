@@ -1,5 +1,5 @@
 use thiserror::Error;
-use crate::lib::scanning::Token;
+use crate::lib::scanner::Token;
 
 #[derive(Error, Debug)]
 pub enum LoxError {

@@ -1,5 +1,5 @@
 use crate::lib::ast::{Expr, LiteralValue, Stmt};
-use crate::lib::scanning::{Token, TokenType};
+use crate::lib::scanner::{Token, TokenType};
 use crate::lib::err::LoxError;
 
 struct ParserState<'a> {
@@ -260,7 +260,7 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
 mod tests {
     use super::*;
     use anyhow::{bail, Result, Error};
-    use crate::lib::{scanning::scan, lox::AstPrinter};
+    use crate::lib::{scanner::scan, lox::AstPrinter};
 
     /// A utility to build statements and compare to the expected
     /// statements.

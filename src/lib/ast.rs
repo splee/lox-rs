@@ -1,4 +1,4 @@
-use crate::lib::scanning::Token;
+use crate::lib::scanner::Token;
 use crate::lib::err::LoxError;
 
 #[derive(Debug, Clone)]
