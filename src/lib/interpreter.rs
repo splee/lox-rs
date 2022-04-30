@@ -154,17 +154,6 @@ mod tests {
 
     use super::*;
     use anyhow::{bail, Result};
-    use std::io::stdout;
-
-    fn _interpret(statements: Vec<Stmt>) -> Result<Vec<Object>> {
-        let mut interpreter = Interpreter::new(stdout());
-
-        let objects = match interpreter.interpret(&statements) {
-            Ok(v) => v,
-            Err(why) => bail!(why),
-        };
-        Ok(objects)
-    }
 
     fn _parse_statements(src: &str) -> Result<Vec<Stmt>> {
         let tokens = scan(src).unwrap();
