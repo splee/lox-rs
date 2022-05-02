@@ -182,7 +182,7 @@ mod tests {
         result: Result<Vec<Object>, LoxError>,
         out: Vec<u8>,
     }
-    
+
     impl InterpreterTest {
         #[allow(dead_code)]
         fn from_statements(statements: &[Stmt]) -> Self {
@@ -196,7 +196,7 @@ mod tests {
         #[allow(dead_code)]
         fn from_src(src: &str) -> Result<Self> {
             let tokens = scan(src).unwrap();
-            let statements = match parse(&tokens){
+            let statements = match parse(&tokens) {
                 Ok(v) => v,
                 Err(why) => bail!(why),
             };
@@ -204,7 +204,11 @@ mod tests {
         }
 
         #[allow(dead_code)]
-        fn assert_eq(self, expected_objects: &[Object], expected_output: Option<&str>) -> Result<()> {
+        fn assert_eq(
+            self,
+            expected_objects: &[Object],
+            expected_output: Option<&str>,
+        ) -> Result<()> {
             let objects = match self.result {
                 Ok(v) => v,
                 Err(why) => bail!(why),
@@ -280,9 +284,7 @@ mod tests {
         if (true)
             1 + 1;
         "#;
-        let expected_objects = vec![
-            Object::Number(2.0),
-        ];
+        let expected_objects = vec![Object::Number(2.0)];
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -292,9 +294,7 @@ mod tests {
         if (false)
             1 + 1;
         "#;
-        let expected_objects = vec![
-            Object::Nil,
-        ];
+        let expected_objects = vec![Object::Nil];
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -306,9 +306,7 @@ mod tests {
         else
            "test" + "ing";
         "#;
-        let expected_objects = vec![
-            Object::Number(2.0),
-        ];
+        let expected_objects = vec![Object::Number(2.0)];
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -320,9 +318,7 @@ mod tests {
         else
             "test" + "ing";
         "#;
-        let expected_objects = vec![
-            Object::String("testing".to_owned()),
-        ];
+        let expected_objects = vec![Object::String("testing".to_owned())];
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 }
