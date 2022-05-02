@@ -178,23 +178,68 @@ mod tests {
             Err(why) => bail!(why),
         }
     }
+    pub struct InterpreterTest {
+        result: Result<Vec<Object>, LoxError>,
+        out: Vec<u8>,
+    }
+    
+    impl InterpreterTest {
+        #[allow(dead_code)]
+        fn from_statements(statements: &[Stmt]) -> Self {
+            let mut out: Vec<u8> = Vec::new();
+            let mut interpreter = Interpreter::new(&mut out);
+            let result = interpreter.interpret(statements);
+
+            InterpreterTest { result, out }
+        }
+
+        #[allow(dead_code)]
+        fn from_src(src: &str) -> Result<Self> {
+            let tokens = scan(src).unwrap();
+            let statements = match parse(&tokens){
+                Ok(v) => v,
+                Err(why) => bail!(why),
+            };
+            Ok(InterpreterTest::from_statements(&statements))
+        }
+
+        #[allow(dead_code)]
+        fn assert_eq(self, expected_objects: &[Object], expected_output: Option<&str>) -> Result<()> {
+            let objects = match self.result {
+                Ok(v) => v,
+                Err(why) => bail!(why),
+            };
+
+            assert_eq!(objects.len(), expected_objects.len());
+
+            for (result, expected) in std::iter::zip(objects, expected_objects) {
+                assert_eq!(&result, expected);
+            }
+
+            if let Some(expected_output) = expected_output {
+                let output = String::from_utf8(self.out).unwrap();
+                assert_eq!(output, expected_output);
+            }
+            Ok(())
+        }
+
+        #[allow(dead_code)]
+        fn assert_err(self, message: &str) -> Result<()> {
+            match self.result {
+                Ok(v) => bail!("{} [Result Object: {:?}]", message, v),
+                Err(_) => Ok(()),
+            }
+        }
+    }
 
     #[test]
     fn test_small_print_script() -> Result<()> {
         let src = r#"
-            print 150.6 * 2;
-            print "test" + "ing";
-            print 1 + 2;
-            print 1 == 0;
+        print 150.6 * 2;
+        print "test" + "ing";
+        print 1 + 2;
+        print 1 == 0;
         "#;
-        let statements = _parse_statements(src)?;
-
-        let mut mock_writer: Vec<u8> = Vec::new();
-        let mut interp = Interpreter::new(&mut mock_writer);
-        let objects = match interp.interpret(&statements) {
-            Ok(v) => v,
-            Err(why) => bail!(why),
-        };
 
         let expected_objects = vec![
             Object::Number(150.6 * 2.0),
@@ -203,16 +248,9 @@ mod tests {
             Object::Boolean(false),
         ];
 
-        assert_eq!(objects.len(), expected_objects.len());
+        let expected_output = Some("301.2\ntesting\n3\nfalse\n");
 
-        for (result, expected) in std::iter::zip(objects, expected_objects) {
-            assert_eq!(result, expected);
-        }
-
-        let expected_output = "301.2\ntesting\n3\nfalse\n";
-
-        assert_eq!(String::from_utf8(mock_writer).unwrap(), expected_output);
-        Ok(())
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, expected_output)
     }
 
     #[test]
@@ -223,14 +261,6 @@ mod tests {
         1 + 2;
         1 == 0;
         "#;
-        let statements = _parse_statements(src)?;
-
-        let mut mock_writer: Vec<u8> = Vec::new();
-        let mut interp = Interpreter::new(&mut mock_writer);
-        let objects = match interp.interpret(&statements) {
-            Ok(v) => v,
-            Err(why) => bail!(why),
-        };
 
         let expected_objects = vec![
             Object::Number(150.6 * 2.0),
@@ -239,16 +269,60 @@ mod tests {
             Object::Boolean(false),
         ];
 
-        assert_eq!(objects.len(), expected_objects.len());
+        let expected_output = Some("");
 
-        for (result, expected) in std::iter::zip(objects, expected_objects) {
-            assert_eq!(result, expected);
-        }
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, expected_output)
+    }
 
-        let expected_output = "";
+    #[test]
+    fn test_if_no_else_with_truthy_condition() -> Result<()> {
+        let src = r#"
+        if (true)
+            1 + 1;
+        "#;
+        let expected_objects = vec![
+            Object::Number(2.0),
+        ];
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
+    }
 
-        assert_eq!(String::from_utf8(mock_writer).unwrap(), expected_output);
+    #[test]
+    fn test_if_no_else_with_falsy_condition() -> Result<()> {
+        let src = r#"
+        if (false)
+            1 + 1;
+        "#;
+        let expected_objects = vec![
+            Object::Nil,
+        ];
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
+    }
 
-        Ok(())
+    #[test]
+    fn test_if_with_else_with_truthy_condition() -> Result<()> {
+        let src = r#"
+        if (true)
+            1 + 1;
+        else
+           "test" + "ing";
+        "#;
+        let expected_objects = vec![
+            Object::Number(2.0),
+        ];
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
+    }
+
+    #[test]
+    fn test_if_with_else_with_falsy_condition() -> Result<()> {
+        let src = r#"
+        if (false)
+            1 + 1;
+        else
+            "test" + "ing";
+        "#;
+        let expected_objects = vec![
+            Object::String("testing".to_owned()),
+        ];
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 }

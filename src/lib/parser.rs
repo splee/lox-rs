@@ -338,7 +338,7 @@ mod tests {
         }
 
         #[allow(dead_code)]
-        fn assert_eq(self, expected: &Vec<Stmt>) -> Result<()> {
+        fn assert_eq(self, expected: &[Stmt]) -> Result<()> {
             let mut printer = AstPrinter {};
             let result = match self.result {
                 Ok(v) => v,
