@@ -135,10 +135,26 @@ impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
     }
 
     fn visit_print_stmt(&mut self, expression: &Expr) -> Result<Object, LoxError> {
-        let value = self.visit_expression_stmt(expression)?;
+        let value = expression.accept(self)?;
         let stringified = format!("{}", value);
         self.write(&stringified)?;
         Ok(value)
+    }
+
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+    ) -> Result<Object, LoxError> {
+        if condition.accept(self)?.is_truthy() {
+            Ok(then_branch.accept(self)?)
+        } else {
+            match else_branch {
+                Some(branch_stmt) => Ok(branch_stmt.accept(self)?),
+                None => Ok(Object::Nil),
+            }
+        }
     }
 }
 

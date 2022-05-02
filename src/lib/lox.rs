@@ -54,4 +54,22 @@ impl StmtVisitor<String> for AstPrinter {
     fn visit_print_stmt(&mut self, expression: &Expr) -> Result<String, LoxError> {
         Ok(format!("(print {})", expression.accept(self)?))
     }
+
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+    ) -> Result<String, LoxError> {
+        let else_str = match else_branch {
+            Some(v) => format!(" else {}", v.accept(self)?),
+            None => "".to_owned(),
+        };
+        Ok(format!(
+            "(if ({}) then {}{})",
+            condition.accept(self)?,
+            then_branch.accept(self)?,
+            else_str
+        ))
+    }
 }

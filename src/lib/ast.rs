@@ -44,6 +44,7 @@ pub trait ExprVisitor<T> {
 pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),
+    If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
 }
 
 impl Stmt {
@@ -51,6 +52,9 @@ impl Stmt {
         match self {
             Stmt::Expression(expression) => visitor.visit_expression_stmt(expression),
             Stmt::Print(expression) => visitor.visit_print_stmt(expression),
+            Stmt::If(condition, then_branch, else_branch) => {
+                visitor.visit_if_stmt(condition, then_branch, else_branch.as_deref())
+            }
         }
     }
 }
@@ -58,4 +62,10 @@ impl Stmt {
 pub trait StmtVisitor<T> {
     fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<T, LoxError>;
     fn visit_print_stmt(&mut self, expression: &Expr) -> Result<T, LoxError>;
+    fn visit_if_stmt(
+        &mut self,
+        condition: &Expr,
+        then_branch: &Stmt,
+        else_branch: Option<&Stmt>,
+    ) -> Result<T, LoxError>;
 }

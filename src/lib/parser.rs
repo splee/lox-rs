@@ -117,7 +117,16 @@ impl<'a> ParserState<'a> {
         match self.expr.take() {
             Some(v) => Ok(v),
             None => Err(LoxError::Internal {
-                message: "expected expr to be populated".to_string(),
+                message: "expected expr to be populated".to_owned(),
+            }),
+        }
+    }
+
+    fn take_stmt(&mut self) -> Result<Box<Stmt>, LoxError> {
+        match self.stmts.pop() {
+            Some(v) => Ok(Box::new(v)),
+            None => Err(LoxError::Internal {
+                message: "expected stmt to be populated".to_owned(),
             }),
         }
     }
@@ -134,18 +143,56 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, LoxError> {
 
 fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
     let t = state.try_current()?;
-    let is_print = matches!(&t.token_type, TokenType::Print);
-    if is_print {
-        // Skip the print token itself and parse the remainder of the tokens.
-        state.advance();
-    }
-    let mut state = expression(state)?;
-    let expr = state.take_expr()?;
-    let stmt = match is_print {
-        true => Stmt::Print(expr),
-        false => Stmt::Expression(expr),
+    state = match &t.token_type {
+        TokenType::If => if_statement(state)?,
+        TokenType::Print => print_statement(state)?,
+        _ => expression_statement(state)?,
     };
+    Ok(state)
+}
+
+fn expression_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
+    state = expression(state)?;
+    let expr = state.take_expr()?;
+    let stmt = Stmt::Expression(expr);
     state.consume(&TokenType::Semicolon, "Expect ';' after statement")?;
+    state.stmts.push(stmt);
+    Ok(state)
+}
+
+fn print_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
+    // Consume the print token
+    state.advance();
+    state = expression(state)?;
+    let expr = state.take_expr()?;
+    let stmt = Stmt::Print(expr);
+    state.consume(&TokenType::Semicolon, "Expect ';' after statement")?;
+    state.stmts.push(stmt);
+    Ok(state)
+}
+
+fn if_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
+    // Consume the if token
+    state.advance();
+    // Next should be an open paren
+    state.consume(&TokenType::LeftParen, "Expect '(' after 'if'.")?;
+    state = expression(state)?;
+    state.consume(&TokenType::RightParen, "Expect ')' after if condition.")?;
+    let condition = state.take_expr()?;
+
+    state = statement(state)?;
+    let then_branch = state.take_stmt()?;
+
+    let else_branch = {
+        if state.match_advance(TokenType::Else) {
+            state = statement(state)?;
+            Some(state.take_stmt()?)
+        } else {
+            None
+        }
+    };
+
+    let stmt = Stmt::If(condition, then_branch, else_branch);
     state.stmts.push(stmt);
     Ok(state)
 }
@@ -267,54 +314,57 @@ fn primary(mut state: ParserState) -> Result<ParserState, LoxError> {
 mod tests {
     use super::*;
     use crate::lib::{lox::AstPrinter, scanner::scan};
-    use anyhow::{bail, Error, Result};
+    use anyhow::{bail, Result};
 
     /// A utility to build statements and compare to the expected
     /// statements.
     #[derive(Debug)]
     #[allow(dead_code)]
     struct ParseTest {
-        expected: Vec<Stmt>,
-        result: Vec<Stmt>,
+        result: Result<Vec<Stmt>, LoxError>,
     }
 
     impl ParseTest {
         #[allow(dead_code)]
-        fn from_tokens(tokens: &[Token], expected: Vec<Stmt>) -> Result<Self> {
-            let result = match parse(tokens) {
-                Ok(r) => r,
+        fn from_tokens(tokens: &[Token]) -> Self {
+            let result = parse(tokens);
+            Self { result }
+        }
+
+        #[allow(dead_code)]
+        fn from_source(source: &str) -> Self {
+            let tokens = scan(source).unwrap();
+            Self::from_tokens(&tokens)
+        }
+
+        #[allow(dead_code)]
+        fn assert_eq(self, expected: &Vec<Stmt>) -> Result<()> {
+            let mut printer = AstPrinter {};
+            let result = match self.result {
+                Ok(v) => v,
                 Err(why) => bail!(why),
             };
-            Ok(Self { expected, result })
-        }
 
-        #[allow(dead_code)]
-        fn from_source(source: &str, expected: Vec<Stmt>) -> Result<Self> {
-            let tokens = scan(source).unwrap();
-            match Self::from_tokens(&tokens, expected) {
-                Ok(e) => Ok(e),
-                Err(why) => bail!(why),
-            }
-        }
-
-        #[allow(dead_code)]
-        fn assert_eq(self) -> Result<(), Error> {
-            let mut printer = AstPrinter {};
-
-            let result_strings = self
-                .result
+            let result_strings = result
                 .into_iter()
                 .filter_map(|s| s.accept(&mut printer).ok())
                 .collect::<Vec<String>>();
 
-            let expected_strings = self
-                .expected
+            let expected_strings = expected
                 .into_iter()
                 .filter_map(|s| s.accept(&mut printer).ok())
                 .collect::<Vec<String>>();
 
             assert_eq!(expected_strings, result_strings);
             Ok(())
+        }
+
+        #[allow(dead_code)]
+        fn assert_err(self, message: &str) -> Result<()> {
+            match self.result {
+                Ok(v) => bail!("{} [Result value: {:?}]", message, v),
+                Err(_) => Ok(()),
+            }
         }
     }
 
@@ -331,24 +381,63 @@ mod tests {
             },
             Box::new(Expr::Literal(LiteralValue::Number(1.0))),
         )))];
-        ParseTest::from_source(source, expected)?.assert_eq()
+        ParseTest::from_source(source).assert_eq(&expected)
     }
 
     #[test]
     fn test_parse_invalid_numbers() -> Result<()> {
-        match ParseTest::from_source("1 1;", vec![]) {
-            Err(_) => Ok(()),
-            Ok(test) => {
-                bail!("Invalid expression was parsed! {:#?}", test);
-            }
-        }
+        ParseTest::from_source("1 1;").assert_err("Invalid expression was parsed!")
     }
 
     #[test]
     fn test_parse_semicolon_required() -> Result<()> {
-        match ParseTest::from_source("1 + 1", vec![]) {
-            Err(_) => Ok(()),
-            Ok(r) => bail!("Statement should not parse: {:?}", r),
-        }
+        ParseTest::from_source("1 + 1").assert_err("Statement should not parse!")
+    }
+
+    #[test]
+    fn test_if_with_no_else_branch() -> Result<()> {
+        let source = "if (true) 1 + 1;";
+        let condition = Expr::Literal(LiteralValue::Boolean(true));
+        let then_branch = Stmt::Expression(Box::new(Expr::Binary(
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+            Token {
+                token_type: TokenType::Plus,
+                lexeme: "+".to_owned(),
+                line: 1,
+                line_pos: 13,
+            },
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+        )));
+        let expected = vec![Stmt::If(Box::new(condition), Box::new(then_branch), None)];
+        ParseTest::from_source(source).assert_eq(&expected)
+    }
+
+    #[test]
+    fn test_if_with_else_branch() -> Result<()> {
+        let source = "if (true) 1 + 1; else nil;";
+        let condition = Expr::Literal(LiteralValue::Boolean(true));
+        let then_branch = Stmt::Expression(Box::new(Expr::Binary(
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+            Token {
+                token_type: TokenType::Plus,
+                lexeme: "+".to_owned(),
+                line: 1,
+                line_pos: 13,
+            },
+            Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+        )));
+        let else_branch = Stmt::Expression(Box::new(Expr::Literal(LiteralValue::Nil)));
+        let expected = vec![Stmt::If(
+            Box::new(condition),
+            Box::new(then_branch),
+            Some(Box::new(else_branch)),
+        )];
+        ParseTest::from_source(source).assert_eq(&expected)
+    }
+
+    #[test]
+    fn test_if_with_missing_closing_paren_on_condition() -> Result<()> {
+        let source = "if (true 1 + 1;";
+        ParseTest::from_source(source).assert_err("Invalid if statement parsed!")
     }
 }

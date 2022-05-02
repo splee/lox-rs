@@ -8,6 +8,17 @@ pub enum Object {
     String(String),
 }
 
+impl Object {
+    pub fn is_truthy(&self) -> bool {
+        match self {
+            Object::Boolean(v) => *v,
+            Object::Nil => false,
+            Object::Number(v) => *v != 0.0f64,
+            Object::String(v) => !v.is_empty(),
+        }
+    }
+}
+
 impl fmt::Display for Object {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
