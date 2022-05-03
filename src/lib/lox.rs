@@ -44,6 +44,15 @@ impl ExprVisitor<String> for AstPrinter {
     fn visit_unary_expr(&mut self, operator: &Token, right: &Expr) -> Result<String, LoxError> {
         Ok(format!("({:?} {})", operator, right.accept(self)?))
     }
+
+    fn visit_logical_expr(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+    ) -> Result<String, LoxError> {
+        todo!()
+    }
 }
 
 impl StmtVisitor<String> for AstPrinter {

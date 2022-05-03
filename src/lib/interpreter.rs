@@ -126,6 +126,15 @@ impl<W: Write> ExprVisitor<Object> for Interpreter<W> {
         };
         Ok(return_expr)
     }
+
+    fn visit_logical_expr(
+        &mut self,
+        left: &Expr,
+        operator: &Token,
+        right: &Expr,
+    ) -> Result<Object, LoxError> {
+        todo!()
+    }
 }
 
 impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
