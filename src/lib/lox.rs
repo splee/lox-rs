@@ -81,4 +81,8 @@ impl StmtVisitor<String> for AstPrinter {
             else_str
         ))
     }
+
+    fn visit_var_stmt(&mut self, name: &Token, initializer: &Expr) -> Result<String, LoxError> {
+        todo!()
+    }
 }

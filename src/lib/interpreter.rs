@@ -165,6 +165,10 @@ impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
             }
         }
     }
+
+    fn visit_var_stmt(&mut self, name: &Token, initializer: &Expr) -> Result<Object, LoxError> {
+        todo!()
+    }
 }
 
 fn unsupported_operation_error<T>(type_name: &str, op: &Token) -> Result<T, LoxError> {

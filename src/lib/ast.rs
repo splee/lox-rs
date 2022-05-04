@@ -53,6 +53,7 @@ pub enum Stmt {
     Expression(Box<Expr>),
     Print(Box<Expr>),
     If(Box<Expr>, Box<Stmt>, Option<Box<Stmt>>),
+    Var(Token, Box<Expr>),
 }
 
 impl Stmt {
@@ -63,6 +64,7 @@ impl Stmt {
             Stmt::If(condition, then_branch, else_branch) => {
                 visitor.visit_if_stmt(condition, then_branch, else_branch.as_deref())
             }
+            Stmt::Var(name, initializer) => visitor.visit_var_stmt(name, initializer),
         }
     }
 }
@@ -76,4 +78,5 @@ pub trait StmtVisitor<T> {
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
     ) -> Result<T, LoxError>;
+    fn visit_var_stmt(&mut self, name: &Token, initializer: &Expr) -> Result<T, LoxError>;
 }
