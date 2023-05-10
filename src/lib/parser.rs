@@ -136,9 +136,69 @@ pub fn parse(tokens: &[Token]) -> Result<Vec<Stmt>, LoxError> {
     // TODO: Add error handling/parser synchronization
     let mut state = ParserState::new(tokens);
     while !state.is_consumed() {
-        state = statement(state)?;
+        state = declaration(state)?;
     }
     Ok(state.stmts)
+}
+
+fn declaration(mut state: ParserState) -> Result<ParserState, LoxError> {
+    let t = state.try_current()?;
+    state = match &t.token_type {
+        &TokenType::Var => var_declaration(state)?,
+        &TokenType::Identifier => var_assignment(state)?,
+        _ => statement(state)?,
+    };
+    // TODO: syncronize() here
+    // error recovery: https://www.craftinginterpreters.com/parsing-expressions.html
+    // parsing variables: https://www.craftinginterpreters.com/statements-and-state.html#parsing-variables
+    Ok(state)
+}
+
+fn var_declaration(mut state: ParserState) -> Result<ParserState, LoxError> {
+    // Skip the Var token
+    state.advance();
+    state.consume(&TokenType::Identifier, "Expect variable name.")?;
+    let name_token = state.try_previous()?.clone();
+
+    let t = state.try_current()?;
+    let initializer = match &t.token_type {
+        &TokenType::Equal => {
+            state.advance();
+            state = expression(state)?;
+            let expr = state.take_expr()?;
+            Some(expr)
+        }
+        _ => None,
+    };
+    state.consume(
+        &TokenType::Semicolon,
+        "Expect ';' after variable declaration.",
+    )?;
+    let stmt = Stmt::Var(name_token, initializer);
+    state.stmts.push(stmt);
+
+    Ok(state)
+}
+
+fn var_assignment(mut state: ParserState) -> Result<ParserState, LoxError> {
+    state.consume(&TokenType::Identifier, "Expect variable name.")?;
+    // Get the variable name.
+    let name_token = state.try_previous()?.clone();
+
+    // Consume the = between identifier and expression.
+    state.consume(&TokenType::Equal, "Expect equal for assignment to variable.")?;
+
+    // Get the right hand side expression
+    state = expression(state)?;
+    let expr = state.take_expr()?;
+
+    // Be sure we've got a semicolon next.
+    state.consume(&TokenType::Semicolon, "Expect ';' after variable assignment.")?;
+
+    let stmt = Stmt::Assign(name_token, expr);
+    state.stmts.push(stmt);
+
+    Ok(state)
 }
 
 fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
@@ -146,6 +206,8 @@ fn statement(mut state: ParserState) -> Result<ParserState, LoxError> {
     state = match &t.token_type {
         TokenType::If => if_statement(state)?,
         TokenType::Print => print_statement(state)?,
+        TokenType::LeftBrace => block_statement(state)?,
+        // TODO: This feels like a bug waiting to happen...
         _ => expression_statement(state)?,
     };
     Ok(state)
@@ -171,6 +233,28 @@ fn print_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
     Ok(state)
 }
 
+fn block_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
+    // Consume the left brace.
+    state.advance();
+    let mut statements: Vec<Box<Stmt>> = Vec::new();
+    loop {
+        if let Some(t) = state.current() {
+            if let TokenType::RightBrace = t.token_type {
+                break;
+            } else {
+                state = declaration(state)?;
+                statements.push(state.take_stmt()?);
+            }
+        } else {
+            break;
+        }
+    } 
+    state.consume(&TokenType::RightBrace, "Expect '}' after block")?;
+    let stmt = Stmt::Block(statements);
+    state.stmts.push(stmt);
+    Ok(state)
+}
+
 fn if_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
     // Consume the if token
     state.advance();
@@ -180,12 +264,12 @@ fn if_statement(mut state: ParserState) -> Result<ParserState, LoxError> {
     state.consume(&TokenType::RightParen, "Expect ')' after if condition.")?;
     let condition = state.take_expr()?;
 
-    state = statement(state)?;
+    state = declaration(state)?;
     let then_branch = state.take_stmt()?;
 
     let else_branch = {
         if state.match_advance(TokenType::Else) {
-            state = statement(state)?;
+            state = declaration(state)?;
             Some(state.take_stmt()?)
         } else {
             None
@@ -439,5 +523,99 @@ mod tests {
     fn test_if_with_missing_closing_paren_on_condition() -> Result<()> {
         let source = "if (true 1 + 1;";
         ParseTest::from_source(source).assert_err("Invalid if statement parsed!")
+    }
+
+    #[test]
+    fn test_block_definition() -> Result<()> {
+        let source = "{ var test; }";
+        let expected = vec![Stmt::Block(
+            vec![
+                Box::new(Stmt::Var(Token {
+                    token_type: TokenType::Var,
+                    lexeme: "test".to_owned(),
+                    line: 1,
+                    line_pos: 13,
+                }, None))
+            ]
+        )];
+        ParseTest::from_source(source).assert_eq(&expected)
+    }
+
+    #[test]
+    fn test_block_without_enclosing_brace() -> Result<()> {
+        let source = "{ var test;";
+        ParseTest::from_source(source).assert_err("Block not closed, parsing should fail!")
+    }
+
+    #[test]
+    fn test_multi_var_statement() -> Result<()> {
+        let source = r#"
+        var multiply = 150.6 * 2;
+        var concat = "test" + "ing";
+        var add = 1 + 2;
+        var eq = 1 == 0;
+        "#;
+        let multiply_var = Stmt::Var(
+            Token { token_type: TokenType::Var, lexeme: "multiply".to_owned(), line: 1, line_pos: 5},
+            Some(Box::new(
+                Expr::Binary(
+                    Box::new(Expr::Literal(LiteralValue::Number(150.6))),
+                    Token {
+                        token_type: TokenType::Star,
+                        lexeme: "*".to_owned(),
+                        line: 2,
+                        line_pos: 30,
+                    },
+                    Box::new(Expr::Literal(LiteralValue::Number(2.0))),
+                )
+            ))
+        );
+        let concat_var = Stmt::Var(
+            Token { token_type: TokenType::Var, lexeme: "concat".to_owned(), line: 1, line_pos: 5},
+            Some(Box::new(
+                Expr::Binary(
+                    Box::new(Expr::Literal(LiteralValue::String("test".to_owned()))),
+                    Token {
+                        token_type: TokenType::Plus,
+                        lexeme: "+".to_owned(),
+                        line: 3,
+                        line_pos: 29,
+                    },
+                    Box::new(Expr::Literal(LiteralValue::String("ing".to_owned()))),
+                ),
+            ))
+        );
+        let add_var = Stmt::Var(
+            Token { token_type: TokenType::Var, lexeme: "add".to_owned(), line: 1, line_pos: 1},
+            Some(Box::new(
+                Expr::Binary(
+                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+                    Token {
+                        token_type: TokenType::Plus,
+                        lexeme: "+".to_owned(),
+                        line: 4,
+                        line_pos: 21,
+                    },
+                    Box::new(Expr::Literal(LiteralValue::Number(2.0))),
+                ),
+            ))
+        );
+        let eq_var = Stmt::Var(
+            Token { token_type: TokenType::Var, lexeme: "eq".to_owned(), line: 1, line_pos: 1},
+            Some(Box::new(
+                Expr::Binary(
+                    Box::new(Expr::Literal(LiteralValue::Number(1.0))),
+                    Token {
+                        token_type: TokenType::EqualEqual,
+                        lexeme: "==".to_owned(),
+                        line: 5,
+                        line_pos: 20,
+                    },
+                    Box::new(Expr::Literal(LiteralValue::Number(0.0))),
+                ),
+            ))
+        );
+        let expected = vec![multiply_var, concat_var, add_var, eq_var];
+        ParseTest::from_source(source).assert_eq(&expected)
     }
 }

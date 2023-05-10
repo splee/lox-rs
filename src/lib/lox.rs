@@ -51,7 +51,11 @@ impl ExprVisitor<String> for AstPrinter {
         operator: &Token,
         right: &Expr,
     ) -> Result<String, LoxError> {
-        todo!()
+        Ok(format!("({:?} {} {})", &operator.token_type, left.accept(self)?, right.accept(self)?))
+    }
+
+    fn visit_variable_expr(&mut self, name: &Token) -> Result<String, LoxError> {
+        Ok(format!("(var {})", &name.lexeme))
     }
 }
 
@@ -82,7 +86,26 @@ impl StmtVisitor<String> for AstPrinter {
         ))
     }
 
-    fn visit_var_stmt(&mut self, name: &Token, initializer: &Expr) -> Result<String, LoxError> {
-        todo!()
+    fn visit_var_stmt(
+        &mut self,
+        name: &Token,
+        initializer: Option<&Expr>,
+    ) -> Result<String, LoxError> {
+        match initializer {
+            Some(v) => Ok(format!("(var {} (init {}))", name.lexeme, v.accept(self)?)),
+            None => Ok(format!("(var {})", name.lexeme)),
+        }
+    }
+
+    fn visit_block_stmt(&mut self, statements: Vec<&Stmt>) -> Result<String, LoxError> {
+        let mut str_stmts = Vec::new();
+        for stmt in statements {
+            str_stmts.push(stmt.accept(self)?);
+        }
+        Ok(format!("(block\n\t{}\n)", str_stmts.join("\n\t")))
+    }
+
+    fn visit_assign_stmt(&mut self, name: &Token, expression: &Expr) -> Result<String, LoxError> {
+        Ok(format!("(assign {} (expr {}))", name.lexeme, expression.accept(self)?))
     }
 }

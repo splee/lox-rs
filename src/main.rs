@@ -13,9 +13,17 @@ use tracing_subscriber::filter::EnvFilter;
 
 #[derive(ClapParser, Debug)]
 struct Args {
+
+    /// The path to a Lox script to run.  If no path is passed, the interpreter will be launched.
     file: Option<PathBuf>,
-    #[clap(long)]
+
+    /// Print the AST as the program is executed.
+    #[clap(long, action)]
     print_ast: bool,
+
+    /// Enable detailed logging.
+    #[clap(long, action)]
+    enable_logging: bool,
 }
 
 fn setup_tracing() -> Result<()> {
@@ -34,8 +42,12 @@ fn setup_tracing() -> Result<()> {
 
 #[instrument]
 fn main() -> Result<()> {
-    setup_tracing()?;
     let args = Args::parse();
+
+    if args.enable_logging {
+        setup_tracing()?;
+    }
+
     if let Some(pbuf) = args.file {
         info!(path = pbuf.to_str(), "Executing lox file");
         if let Err(why) = run_file(pbuf, args.print_ast) {

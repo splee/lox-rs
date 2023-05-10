@@ -3,28 +3,30 @@ use crate::lib::{
     err::LoxError,
     object::Object,
     scanner::{Token, TokenType},
+    environment::Environment,
 };
 use std::io::Write;
+use std::collections::{HashMap, HashSet};
 
 pub struct Interpreter<W: Write> {
     out: W,
+    env: Environment,
 }
 
 impl<W: Write> Interpreter<W> {
     pub fn new(out: W) -> Self {
-        Interpreter { out }
+        Interpreter { out, env: Environment::new() }
     }
 
     pub fn evaluate(&mut self, expression: &Expr) -> Result<Object, LoxError> {
         expression.accept(self)
     }
 
-    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<Vec<Object>, LoxError> {
-        let mut objects: Vec<Object> = Vec::new();
+    pub fn interpret(&mut self, statements: &[Stmt]) -> Result<(), LoxError> {
         for stmt in statements {
-            objects.push(stmt.accept(self)?);
+            let _ = stmt.accept(self)?;
         }
-        Ok(objects)
+        Ok(())
     }
 
     fn write(&mut self, value: &str) -> Result<(), LoxError> {
@@ -129,25 +131,29 @@ impl<W: Write> ExprVisitor<Object> for Interpreter<W> {
 
     fn visit_logical_expr(
         &mut self,
-        left: &Expr,
-        operator: &Token,
-        right: &Expr,
+        _left: &Expr,
+        _operator: &Token,
+        _right: &Expr,
     ) -> Result<Object, LoxError> {
         todo!()
     }
+
+    fn visit_variable_expr(&mut self, name: &Token) -> Result<Object, LoxError> {
+        Ok(self.env.get(name)?.clone())
+    }
 }
 
-impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
-    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<Object, LoxError> {
-        let value = self.evaluate(expression)?;
-        Ok(value)
+impl<W: Write> StmtVisitor<()> for Interpreter<W> {
+    fn visit_expression_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
+        let _ = self.evaluate(expression)?;
+        Ok(())
     }
 
-    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<Object, LoxError> {
+    fn visit_print_stmt(&mut self, expression: &Expr) -> Result<(), LoxError> {
         let value = expression.accept(self)?;
         let stringified = format!("{}", value);
         self.write(&stringified)?;
-        Ok(value)
+        Ok(())
     }
 
     fn visit_if_stmt(
@@ -155,20 +161,44 @@ impl<W: Write> StmtVisitor<Object> for Interpreter<W> {
         condition: &Expr,
         then_branch: &Stmt,
         else_branch: Option<&Stmt>,
-    ) -> Result<Object, LoxError> {
+    ) -> Result<(), LoxError> {
         if condition.accept(self)?.is_truthy() {
-            Ok(then_branch.accept(self)?)
+            then_branch.accept(self)?;
+            Ok(())
         } else {
             match else_branch {
-                Some(branch_stmt) => Ok(branch_stmt.accept(self)?),
-                None => Ok(Object::Nil),
+                Some(branch_stmt) => {
+                    branch_stmt.accept(self)?;
+                    Ok(())
+                },
+                None => Ok(()),
             }
         }
     }
 
-    fn visit_var_stmt(&mut self, name: &Token, initializer: &Expr) -> Result<Object, LoxError> {
+    fn visit_var_stmt(
+        &mut self,
+        name: &Token,
+        initializer: Option<&Expr>,
+    ) -> Result<(), LoxError> {
+        let value = match initializer {
+            Some(expr) => expr.accept(self)?,
+            None => Object::Nil,
+        };
+        let _ = self.env.define(name, value)?;
+        Ok(())
+    }
+
+    fn visit_assign_stmt(&mut self, name: &Token, expression: &Expr) -> Result<(), LoxError> {
+        let value = expression.accept(self)?;
+        let _ = self.env.assign(name, value)?;
+        Ok(())
+    }
+
+    fn visit_block_stmt(&mut self, _statements: Vec<&Stmt>) -> Result<(), LoxError> {
         todo!()
     }
+
 }
 
 fn unsupported_operation_error<T>(type_name: &str, op: &Token) -> Result<T, LoxError> {
@@ -192,18 +222,23 @@ mod tests {
         }
     }
     pub struct InterpreterTest {
-        result: Result<Vec<Object>, LoxError>,
+        result: Result<(), LoxError>,
         out: Vec<u8>,
+        env: Environment,
     }
 
     impl InterpreterTest {
         #[allow(dead_code)]
         fn from_statements(statements: &[Stmt]) -> Self {
             let mut out: Vec<u8> = Vec::new();
-            let mut interpreter = Interpreter::new(&mut out);
-            let result = interpreter.interpret(statements);
+            let (result , env) = {
+                let mut interpreter = Interpreter::new(&mut out);
+                let r = interpreter.interpret(statements);
+                let env = interpreter.env.clone();
+                (r, env)
+            };
 
-            InterpreterTest { result, out }
+            InterpreterTest { result, out, env }
         }
 
         #[allow(dead_code)]
@@ -218,19 +253,24 @@ mod tests {
 
         #[allow(dead_code)]
         fn assert_eq(
-            self,
-            expected_objects: &[Object],
+            mut self,
+            expected_objects: &HashMap<String, Object>,
             expected_output: Option<&str>,
         ) -> Result<()> {
-            let objects = match self.result {
+            let _ = match self.result {
                 Ok(v) => v,
                 Err(why) => bail!(why),
             };
 
-            assert_eq!(objects.len(), expected_objects.len());
+            let expected_vars: HashSet<String> = expected_objects.keys().cloned().collect();
+            let result_vars: HashSet<String> = self.env.all_values().keys().cloned().collect();
+            let diff: HashSet<_> = result_vars.symmetric_difference(&expected_vars).collect();
+            assert_eq!(diff.len(), 0);
 
-            for (result, expected) in std::iter::zip(objects, expected_objects) {
-                assert_eq!(&result, expected);
+            for k in expected_objects.keys() {
+                let expected_obj = expected_objects.get(k);
+                let result_obj = self.env.get_by_name(k);
+                assert_eq!(expected_obj, result_obj);
             }
 
             if let Some(expected_output) = expected_output {
@@ -258,13 +298,7 @@ mod tests {
         print 1 == 0;
         "#;
 
-        let expected_objects = vec![
-            Object::Number(150.6 * 2.0),
-            Object::String("testing".to_owned()),
-            Object::Number(3.0),
-            Object::Boolean(false),
-        ];
-
+        let expected_objects = HashMap::new();
         let expected_output = Some("301.2\ntesting\n3\nfalse\n");
 
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, expected_output)
@@ -273,18 +307,18 @@ mod tests {
     #[test]
     fn test_small_script() -> Result<()> {
         let src = r#"
-        150.6 * 2;
-        "test" + "ing";
-        1 + 2;
-        1 == 0;
+        var multiply = 150.6 * 2;
+        var concat = "test" + "ing";
+        var add = 1 + 2;
+        var eq = 1 == 0;
         "#;
 
-        let expected_objects = vec![
-            Object::Number(150.6 * 2.0),
-            Object::String("testing".to_owned()),
-            Object::Number(3.0),
-            Object::Boolean(false),
-        ];
+        let expected_objects = HashMap::from([
+            ("multiply".to_string(), Object::Number(150.6 * 2.0)),
+            ("concat".to_string(), Object::String("testing".to_owned())),
+            ("add".to_string(), Object::Number(3.0)),
+            ("eq".to_string(), Object::Boolean(false)),
+        ]);
 
         let expected_output = Some("");
 
@@ -292,12 +326,27 @@ mod tests {
     }
 
     #[test]
+    fn test_declare_then_assign() -> Result<()> {
+        let src = r#"
+        var add;
+        add = 1 + 1;
+        "#;
+        let expected_objects = HashMap::from([
+            ("add".to_owned(), Object::Number(2.0)),
+        ]);
+        InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
+    }
+
+    #[test]
     fn test_if_no_else_with_truthy_condition() -> Result<()> {
         let src = r#"
+        var add;
         if (true)
-            1 + 1;
+            add = 1 + 1;
         "#;
-        let expected_objects = vec![Object::Number(2.0)];
+        let expected_objects = HashMap::from([
+            ("add".to_string(), Object::Number(2.0)),
+        ]);
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -305,9 +354,9 @@ mod tests {
     fn test_if_no_else_with_falsy_condition() -> Result<()> {
         let src = r#"
         if (false)
-            1 + 1;
+            var add = 1 + 1;
         "#;
-        let expected_objects = vec![Object::Nil];
+        let expected_objects = HashMap::new();
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -315,11 +364,13 @@ mod tests {
     fn test_if_with_else_with_truthy_condition() -> Result<()> {
         let src = r#"
         if (true)
-            1 + 1;
+            var add = 1 + 1;
         else
-           "test" + "ing";
+            var concat = "test" + "ing";
         "#;
-        let expected_objects = vec![Object::Number(2.0)];
+        let expected_objects = HashMap::from([
+            ("add".to_string(), Object::Number(2.0)),
+        ]);
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 
@@ -327,11 +378,13 @@ mod tests {
     fn test_if_with_else_with_falsy_condition() -> Result<()> {
         let src = r#"
         if (false)
-            1 + 1;
+            var add = 1 + 1;
         else
-            "test" + "ing";
+            var concat = "test" + "ing";
         "#;
-        let expected_objects = vec![Object::String("testing".to_owned())];
+        let expected_objects = HashMap::from([
+            ("concat".to_string(), Object::String("testing".to_owned())),
+        ]);
         InterpreterTest::from_src(src)?.assert_eq(&expected_objects, None)
     }
 }
